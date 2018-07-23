@@ -22,6 +22,7 @@ import (
 	"syscall"
 
 	"github.com/mendersoftware/log"
+	"github.com/mendersoftware/mender-artifact/delta"
 	"github.com/pkg/errors"
 )
 
@@ -71,6 +72,76 @@ func (d *device) SwapPartitions() error {
 		return err
 	}
 	log.Debug("Marking inactive partition as a boot candidate successful.")
+	return nil
+}
+
+// DeltaUpdate opens active and inactive partitions and returns them as reader
+// and writer respectively along with an allocated buffer for use in the xdelta wrapper
+// and an error if any.
+// TODO: move duplicated code (from InstallUpdate) to a private function.
+func (d *device) InstallDeltaUpdate(patch io.ReadCloser, size int64) error {
+	log.Debugf("Preparing to install delta update of size: %d", size)
+	if size < 0 {
+		return errors.New("Invalid delta update. Aborting.")
+	}
+
+	inactivePartition, err := d.GetInactive()
+	if err != nil {
+		return err
+	}
+	activePartition, err := d.GetActive()
+	if err != nil {
+		return err
+	}
+
+	typeUBI := isUbiBlockDevice(inactivePartition)
+	if typeUBI {
+		// UBI block devices are not prefixed with /dev due to the fact
+		// that the kernel root= argument does not handle UBI block
+		// devices which are prefixed with /dev
+		//
+		// Kernel root= only accepts:
+		// - ubi0_0
+		// - ubi:rootfsa
+		inactivePartition = filepath.Join("/dev", inactivePartition)
+	}
+	bd_inactive := &BlockDevice{Path: inactivePartition, typeUBI: typeUBI, ImageSize: size}
+
+	typeUBI = isUbiBlockDevice(activePartition)
+	if typeUBI {
+		activePartition = filepath.Join("/dev", activePartition)
+	}
+	bd_active := &BlockDevice{Path: activePartition, typeUBI: typeUBI, ImageSize: size}
+
+	if bsz, err := bd_inactive.Size(); err != nil {
+		log.Errorf("failed to read size of block device %s: %v",
+			inactivePartition, err)
+		return err
+	} else if bsz < uint64(size) {
+		log.Errorf("update (%v bytes) is larger than the size of device %s (%v bytes)",
+			size, inactivePartition, bsz)
+		return syscall.ENOSPC
+	}
+
+	ssz, err := bd_active.SectorSize()
+	if err != nil {
+		log.Errorf("failed to read sector size of block device %s: %v",
+			inactivePartition, err)
+		return err
+	}
+
+	// allocate buffer based on sector size and provide it for staging
+	// in io.CopyBuffer
+	buf := make([]byte, ssz)
+
+	// Use inactive partition as source, and patch inactive partition
+	decoding := delta.NewDeltaDecoding(bd_active, patch, bd_inactive, buf)
+	err = decoding.Decode()
+
+	if err != nil {
+		log.Errorf("Delta update decoding failed: %v", err)
+		return err
+	}
 	return nil
 }
 

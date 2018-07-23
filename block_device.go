@@ -32,13 +32,13 @@ type BlockDeviceGetSizeFunc func(file *os.File) (uint64, error)
 type BlockDeviceGetSectorSizeFunc func(file *os.File) (int, error)
 
 // BlockDevice is a low-level wrapper for a block device. The wrapper implements
-// io.Writer and io.Closer interfaces.
+// (io.Writer xor io.Reader) and io.Closer interfaces.
 type BlockDevice struct {
-	Path      string               // device path, ex. /dev/mmcblk0p1
-	out       *os.File             // os.File for writing
-	w         *utils.LimitedWriter // wrapper for `out` limited the number of bytes written
-	typeUBI   bool                 // Set to true if we are updating an UBI volume
-	ImageSize int64                // image size
+	Path      string           // device path, ex. /dev/mmcblk0p1
+	out       *os.File         // os.File for writing
+	io        *utils.LimitedIO // wrapper for `out` limited the number of bytes written/read/seek
+	typeUBI   bool             // Set to true if we are updating an UBI volume
+	ImageSize int64            // image size
 }
 
 // Write writes data `p` to underlying block device. Will automatically open
@@ -46,7 +46,7 @@ type BlockDevice struct {
 func (bd *BlockDevice) Write(p []byte) (int, error) {
 	if bd.out == nil {
 		log.Infof("opening device %s for writing", bd.Path)
-		out, err := os.OpenFile(bd.Path, os.O_WRONLY, 0)
+		out, err := os.OpenFile(bd.Path, os.O_RDWR, 0)
 		if err != nil {
 			return 0, err
 		}
@@ -84,18 +84,45 @@ func (bd *BlockDevice) Write(p []byte) (int, error) {
 		log.Infof("partition %s size: %v", bd.Path, size)
 
 		bd.out = out
-		bd.w = &utils.LimitedWriter{
-			W: out,
-			N: size,
-		}
+		bd.io = utils.NewLimitedIO(out, size)
 	}
 
-	w, err := bd.w.Write(p)
+	w, err := bd.io.Write(p)
 	if err != nil {
 		log.Errorf("written %v out of %v bytes to partition %s: %v",
 			w, len(p), bd.Path, err)
 	}
 	return w, err
+}
+
+// Reads data to `p` from underlying block device. Will automatically open
+// the device in a read-only mode. Otherwise, behaves like io.Reader.
+func (bd *BlockDevice) Read(p []byte) (int, error) {
+	if bd.out == nil {
+		log.Infof("opening device %s for reading", bd.Path)
+		out, err := os.OpenFile(bd.Path, os.O_RDWR, 0)
+		if err != nil {
+			return 0, err
+		}
+
+		size, err := BlockDeviceGetSizeOf(out)
+		if err != nil {
+			log.Errorf("failed to read block device size: %v", err)
+			out.Close()
+			return 0, err
+		}
+		log.Infof("partition %s size: %v", bd.Path, size)
+
+		bd.out = out
+		bd.io = utils.NewLimitedIO(out, size)
+	}
+
+	r, err := bd.io.Read(p)
+	if err != nil {
+		log.Errorf("read %v out of %v bytes from partition %s: %v",
+			r, len(p), bd.Path, err)
+	}
+	return r, err
 }
 
 // Close closes underlying block device automatically syncing any unwritten
@@ -110,10 +137,14 @@ func (bd *BlockDevice) Close() error {
 			log.Errorf("failed to close partition %s: %v", bd.Path, err)
 		}
 		bd.out = nil
-		bd.w = nil
+		bd.io = nil
 	}
 
 	return nil
+}
+
+func (bd *BlockDevice) Seek(offset int64, whence int) (int64, error) {
+	return bd.io.Seek(offset, whence)
 }
 
 // Size queries the size of the underlying block device. Automatically opens a

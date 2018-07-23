@@ -1,4 +1,4 @@
-// Copyright 2017 Northern.tech AS
+// Copyright 2018 Northern.tech AS
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -33,8 +33,8 @@ func (te *testErrorWriter) Write(p []byte) (int, error) {
 	return te.Written, te.Err
 }
 
-func TestLimitedWriter(t *testing.T) {
-	lw := LimitedWriter{ioutil.Discard, 5}
+func TestLimitedIO(t *testing.T) {
+	lw := LimitedIO{ioutil.Discard, 5}
 	assert.NotNil(t, lw)
 
 	// limit to 5 bytes
@@ -46,7 +46,7 @@ func TestLimitedWriter(t *testing.T) {
 	assert.EqualError(t, err, syscall.ENOSPC.Error())
 
 	b := &bytes.Buffer{}
-	lw = LimitedWriter{b, 5}
+	lw = LimitedIO{b, 5}
 	// try to write more than 5 bytes
 	w, err := lw.Write([]byte("abcdefg"))
 	assert.Equal(t, 5, w)
@@ -55,16 +55,16 @@ func TestLimitedWriter(t *testing.T) {
 
 	// success write
 	b = &bytes.Buffer{}
-	lw = LimitedWriter{b, 5}
+	lw = LimitedIO{b, 5}
 	w, err = lw.Write([]byte("foo"))
 	assert.NoError(t, err)
 	assert.Equal(t, len([]byte("foo")), w)
 
-	lw = LimitedWriter{nil, 100}
+	lw = LimitedIO{nil, 100}
 	_, err = lw.Write([]byte("foo"))
 	assert.Error(t, err)
 
-	lw = LimitedWriter{
+	lw = LimitedIO{
 		W: &testErrorWriter{
 			Err:     errors.New("fail"),
 			Written: 3,

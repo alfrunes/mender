@@ -29,23 +29,12 @@ import (
 
 type UInstaller interface {
 	InstallUpdate(io.ReadCloser, int64) error
+	InstallDeltaUpdate(io.ReadCloser, int64) error
 	EnableUpdatedPartition() error
 }
 
-func Install(art io.ReadCloser, dt string, key []byte, scrDir string,
-	device UInstaller, acceptStateScripts bool) error {
-
-	rootfs := handlers.NewRootfsInstaller()
-
-	rootfs.InstallHandler = func(r io.Reader, df *handlers.DataFile) error {
-		log.Debugf("installing update %v of size %v", df.Name, df.Size)
-		err := device.InstallUpdate(ioutil.NopCloser(r), df.Size)
-		if err != nil {
-			log.Errorf("update image installation failed: %v", err)
-			return err
-		}
-		return nil
-	}
+func install(art io.ReadCloser, dt string, key []byte, scrDir string,
+	device UInstaller, acceptStateScripts bool, handle *handlers.Rootfs) error {
 
 	var ar *areader.Reader
 	// if there is a verification key artifact must be signed
@@ -55,7 +44,7 @@ func Install(art io.ReadCloser, dt string, key []byte, scrDir string,
 		ar = areader.NewReader(art)
 	}
 
-	if err := ar.RegisterHandler(rootfs); err != nil {
+	if err := ar.RegisterHandler(handle); err != nil {
 		return errors.Wrap(err, "failed to register install handler")
 	}
 
@@ -128,4 +117,42 @@ func Install(art io.ReadCloser, dt string, key []byte, scrDir string,
 		ar.GetArtifactName(), ar.GetInfo().Version, ar.GetCompatibleDevices())
 
 	return nil
+}
+
+// Install is the regular rootfs install function, reading the artifact and streaming
+// rootfs to storage.
+func Install(art io.ReadCloser, dt string, key []byte, scrDir string,
+	device UInstaller, acceptStateScripts bool) error {
+
+	rootfs := handlers.NewRootfsInstaller()
+
+	rootfs.InstallHandler = func(r io.Reader, df *handlers.DataFile) error {
+		log.Debugf("installing update %v of size %v", df.Name, df.Size)
+		err := device.InstallUpdate(ioutil.NopCloser(r), df.Size)
+		if err != nil {
+			log.Errorf("update image installation failed: %v", err)
+			return err
+		}
+		return nil
+	}
+	return install(art, dt, key, scrDir, device, acceptStateScripts, rootfs)
+
+}
+
+func InstallDelta(art io.ReadCloser, dt string, key []byte, scrDir string,
+	device UInstaller, acceptStateScripts bool) error {
+
+	delta := handlers.NewRootfsInstaller()
+
+	delta.InstallHandler = func(patch io.Reader, df *handlers.DataFile) error {
+		log.Debugf("Installing deltaupdate %v of size %v", df.Name, df.Size)
+		err := device.InstallDeltaUpdate(ioutil.NopCloser(patch), df.Size)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	err := install(art, dt, key, scrDir, device, acceptStateScripts, delta)
+	return err
 }

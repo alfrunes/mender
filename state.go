@@ -696,9 +696,17 @@ func (u *UpdateStoreState) Handle(ctx *StateContext, c Controller) (State, bool)
 		return NewUpdateStatusReportState(u.update, client.StatusFailure), false
 	}
 
-	if err := c.InstallUpdate(u.imagein, u.size); err != nil {
-		log.Errorf("update install failed: %s", err)
-		return NewFetchStoreRetryState(u, u.update, err), false
+	if u.update.DeltaAppliesTo() != "" {
+        // NOTE we're using the size of the resulting rootfs (not patch file size).
+		if err := c.InstallDeltaUpdate(u.imagein, u.update.DeltaSize()); err != nil {
+			log.Errorf("Delta update install failed: %s", err)
+			return NewFetchStoreRetryState(u, u.update, err), false
+		}
+	} else {
+		if err := c.InstallUpdate(u.imagein, u.size); err != nil {
+			log.Errorf("update install failed: %s", err)
+			return NewFetchStoreRetryState(u, u.update, err), false
+		}
 	}
 
 	// restart counter so that we are able to retry next time

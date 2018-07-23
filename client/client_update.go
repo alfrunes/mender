@@ -135,6 +135,13 @@ type UpdateResponse struct {
 		}
 		CompatibleDevices []string `json:"device_types_compatible"`
 		ArtifactName      string   `json:"artifact_name"`
+		Delta             struct {
+			// Name of the previous artifact this patch applies to.
+			// Empty string if this is a "regular" update.
+			AppliesTo string
+			// Size of the resulting (patched) rootfs.
+			RootfsSize int64
+		}
 	}
 	ID string
 }
@@ -145,6 +152,14 @@ func (ur UpdateResponse) CompatibleDevices() []string {
 
 func (ur UpdateResponse) ArtifactName() string {
 	return ur.Artifact.ArtifactName
+}
+
+func (ur UpdateResponse) DeltaAppliesTo() string {
+	return ur.Artifact.Delta.AppliesTo
+}
+
+func (ur UpdateResponse) DeltaSize() int64 {
+    return ur.Artifact.Delta.RootfsSize
 }
 
 func (ur UpdateResponse) URI() string {

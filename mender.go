@@ -498,6 +498,11 @@ func (m *mender) CheckUpdate() (*client.UpdateResponse, menderError) {
 		log.Info("Attempting to upgrade to currently installed artifact name, not performing upgrade.")
 		return &update, NewTransientError(os.ErrExist)
 	}
+	if update.DeltaAppliesTo() != "" && update.DeltaAppliesTo() == update.ArtifactName() {
+		// No delta Update should be allowed to patch repeatedly.
+		log.Info("Received illegal delta update: Artifact name equals delta target name.")
+		return nil, NewTransientError(errors.Errorf("Illegal delta update: matching artifact and target name."))
+	}
 	return &update, nil
 }
 
@@ -764,5 +769,14 @@ func (m *mender) InstallUpdate(from io.ReadCloser, size int64) error {
 		log.Errorf("Unable to verify the existing hardware. Update will continue anyways: %v : %v", defaultDeviceTypeFile, err)
 	}
 	return installer.Install(from, deviceType,
+		m.GetArtifactVerifyKey(), m.stateScriptPath, m.UInstallCommitRebooter, true)
+}
+
+func (m *mender) InstallDeltaUpdate(from io.ReadCloser, size int64) error {
+	deviceType, err := m.GetDeviceType()
+	if err != nil {
+		log.Errorf("Unable to verify the existing hardware. Update will continue anyways: %v : %v", defaultDeviceTypeFile, err)
+	}
+	return installer.InstallDelta(from, deviceType,
 		m.GetArtifactVerifyKey(), m.stateScriptPath, m.UInstallCommitRebooter, true)
 }
