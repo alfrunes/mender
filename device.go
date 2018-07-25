@@ -75,23 +75,12 @@ func (d *device) SwapPartitions() error {
 	return nil
 }
 
-// DeltaUpdate opens active and inactive partitions and returns them as reader
-// and writer respectively along with an allocated buffer for use in the xdelta wrapper
-// and an error if any.
-// TODO: move duplicated code (from InstallUpdate) to a private function.
-func (d *device) InstallDeltaUpdate(patch io.ReadCloser, size int64) error {
-	log.Debugf("Preparing to install delta update of size: %d", size)
-	if size < 0 {
-		return errors.New("Invalid delta update. Aborting.")
-	}
+// setupInstall prepares inactive partition for installation
+func (d *device) setupInstall(size int64) (BlockDevice, error) {
 
 	inactivePartition, err := d.GetInactive()
 	if err != nil {
-		return err
-	}
-	activePartition, err := d.GetActive()
-	if err != nil {
-		return err
+		return nil, err
 	}
 
 	typeUBI := isUbiBlockDevice(inactivePartition)
@@ -105,34 +94,62 @@ func (d *device) InstallDeltaUpdate(patch io.ReadCloser, size int64) error {
 		// - ubi:rootfsa
 		inactivePartition = filepath.Join("/dev", inactivePartition)
 	}
-	bd_inactive := &BlockDevice{Path: inactivePartition, typeUBI: typeUBI, ImageSize: size}
 
-	typeUBI = isUbiBlockDevice(activePartition)
-	if typeUBI {
-		activePartition = filepath.Join("/dev", activePartition)
-	}
-	bd_active := &BlockDevice{Path: activePartition, typeUBI: typeUBI, ImageSize: size}
+	b := NewBlockDevice(inactivePartition, typeUBI, size)
 
-	if bsz, err := bd_inactive.Size(); err != nil {
+	if bsz, err := b.Size(); err != nil {
 		log.Errorf("failed to read size of block device %s: %v",
 			inactivePartition, err)
-		return err
+		return nil, err
 	} else if bsz < uint64(size) {
 		log.Errorf("update (%v bytes) is larger than the size of device %s (%v bytes)",
 			size, inactivePartition, bsz)
-		return syscall.ENOSPC
+		return nil, syscall.ENOSPC
 	}
+    return b, nil
+}
+
+// DeltaUpdate opens active and inactive partitions and returns them as reader
+// and writer respectively along with an allocated buffer for use in the xdelta wrapper
+// and an error if any.
+// NOTE: size is with respect to the patched rootfs, not the patch itself.
+// TODO: move duplicated code (from InstallUpdate) to a private function.
+func (d *device) InstallDeltaUpdate(patch io.ReadCloser, size int64) error {
+	log.Debugf("Preparing to install delta update of size: %d", size)
+	if size < 0 {
+		return errors.New("Invalid delta update. Aborting.")
+	}
+
+    bd_inactive, err := d.setupInstall(size)
+	if err != nil {
+		return err
+	}
+
+    // setup active partition aswell (RD_ONLY)
+	activePartition, err := d.GetActive()
+	if err != nil {
+		return err
+	}
+	typeUBI := isUbiBlockDevice(activePartition)
+	if typeUBI {
+		activePartition = filepath.Join("/dev", activePartition)
+	}
+	bd_active := NewBlockDevice(activePartition, typeUBI, size)
 
 	ssz, err := bd_active.SectorSize()
 	if err != nil {
 		log.Errorf("failed to read sector size of block device %s: %v",
-			inactivePartition, err)
+			bd_inactive.GetPath(), err)
 		return err
 	}
 
 	// allocate buffer based on sector size and provide it for staging
 	// in io.CopyBuffer
-	buf := make([]byte, ssz)
+	if delta.ALLOCSIZE%ssz != 0 {
+		log.Errorf("Block size not a multiple of xdelta allocation size.")
+		return errors.New("Block size not a multiple of xdelta allocation size")
+	}
+	buf := make([]byte, delta.ALLOCSIZE)
 
 	// Use inactive partition as source, and patch inactive partition
 	decoding := delta.NewDeltaDecoding(bd_active, patch, bd_inactive, buf)
@@ -152,57 +169,22 @@ func (d *device) InstallUpdate(image io.ReadCloser, size int64) error {
 		return errors.New("Have invalid update. Aborting.")
 	}
 
-	inactivePartition, err := d.GetInactive()
+    b, err := d.setupInstall(size)
 	if err != nil {
 		return err
 	}
 
-	typeUBI := isUbiBlockDevice(inactivePartition)
-	if typeUBI {
-		// UBI block devices are not prefixed with /dev due to the fact
-		// that the kernel root= argument does not handle UBI block
-		// devices which are prefixed with /dev
-		//
-		// Kernel root= only accepts:
-		// - ubi0_0
-		// - ubi:rootfsa
-		inactivePartition = filepath.Join("/dev", inactivePartition)
-	}
-
-	b := &BlockDevice{Path: inactivePartition, typeUBI: typeUBI, ImageSize: size}
-
-	if bsz, err := b.Size(); err != nil {
-		log.Errorf("failed to read size of block device %s: %v",
-			inactivePartition, err)
-		return err
-	} else if bsz < uint64(size) {
-		log.Errorf("update (%v bytes) is larger than the size of device %s (%v bytes)",
-			size, inactivePartition, bsz)
-		return syscall.ENOSPC
-	}
-
-	ssz, err := b.SectorSize()
-	if err != nil {
-		log.Errorf("failed to read sector size of block device %s: %v",
-			inactivePartition, err)
-		return err
-	}
-
-	// allocate buffer based on sector size and provide it for staging
-	// in io.CopyBuffer
-	buf := make([]byte, ssz)
-
-	w, err := io.CopyBuffer(b, image, buf)
+	w, err := io.Copy(b, image)
 	if err != nil {
 		log.Errorf("failed to write image data to device %v: %v",
-			inactivePartition, err)
+			b.GetPath(), err)
 	}
 
 	log.Infof("wrote %v/%v bytes of update to device %v",
-		w, size, inactivePartition)
+		w, size, b.GetPath())
 
 	if cerr := b.Close(); cerr != nil {
-		log.Errorf("closing device %v failed: %v", inactivePartition, cerr)
+		log.Errorf("closing device %v failed: %v", b.GetPath(), cerr)
 		if err != nil {
 			return cerr
 		}

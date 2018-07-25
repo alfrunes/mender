@@ -1,4 +1,4 @@
-// Copyright 2017 Northern.tech AS
+// Copyright 2018 Northern.tech AS
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import (
 )
 
 func TestBlockDeviceFail(t *testing.T) {
-	bd := BlockDevice{Path: "/dev/somefile"}
+	bd := blockDevice{Path: "/dev/somefile"}
 
 	// closing unopened device should not fail
 	err := bd.Close()
@@ -46,6 +46,16 @@ func makeBlockDeviceSize(t *testing.T, sz uint64, err error, name string) BlockD
 			assert.Equal(t, name, file.Name())
 		}
 		return sz, err
+	}
+}
+
+func makeBlockDeviceSectorSize(t *testing.T, ssz int, err error, name string) BlockDeviceGetSectorSizeFunc {
+	return func(file *os.File) (int, error) {
+		t.Logf("block device sector size called: %v", file)
+		if assert.NotNil(t, file) {
+			assert.Equal(t, name, file.Name())
+		}
+		return ssz, err
 	}
 }
 
@@ -71,15 +81,17 @@ func TestBlockDeviceWrite(t *testing.T) {
 
 	// pretend the device is only 10 bytes in size
 	BlockDeviceGetSizeOf = makeBlockDeviceSize(t, 10, nil, bdpath)
+	BlockDeviceGetSectorSizeOf = makeBlockDeviceSectorSize(t, 10, nil, bdpath)
 
 	// test simple write
 	err = createFile(bdpath)
 	assert.NoError(t, err)
-	bd := BlockDevice{Path: bdpath}
+	bd := blockDevice{Path: bdpath}
 	n, err := bd.Write([]byte("foobar"))
-	assert.Equal(t, len([]byte("foobar")), n)
+	assert.Equal(t, 0, n) // didn't write sectorsize number of bytes
 	assert.NoError(t, err)
-	bd.Close()
+	err = bd.Close() // also fsyncs
+	assert.NoError(t, err, syscall.ENOSPC.Error())
 
 	data, err := ioutil.ReadFile(bdpath)
 	assert.NoError(t, err)
@@ -90,11 +102,11 @@ func TestBlockDeviceWrite(t *testing.T) {
 	// too large write
 	err = createFile(bdpath)
 	assert.NoError(t, err)
-	bd = BlockDevice{Path: bdpath}
+	bd = blockDevice{Path: bdpath}
 	n, err = bd.Write([]byte("foobarfoobar"))
 	assert.Equal(t, 10, n)
 	assert.EqualError(t, err, syscall.ENOSPC.Error())
-	bd.Close()
+	err = bd.Close()
 
 	data, err = ioutil.ReadFile(bdpath)
 	assert.NoError(t, err)
@@ -121,15 +133,17 @@ func TestBlockDeviceSize(t *testing.T) {
 
 	// pretend the device is only 10 bytes in size
 	BlockDeviceGetSizeOf = makeBlockDeviceSize(t, 10, nil, bdpath)
+	BlockDeviceGetSectorSizeOf = makeBlockDeviceSectorSize(t, 10, nil, bdpath)
 
-	bd := BlockDevice{Path: bdpath}
+	bd := blockDevice{Path: bdpath}
 	sz, err := bd.Size()
 	assert.Equal(t, uint64(10), sz)
 	assert.NoError(t, err)
 
 	BlockDeviceGetSizeOf = makeBlockDeviceSize(t, 10, errors.New("failed"), bdpath)
+	BlockDeviceGetSectorSizeOf = makeBlockDeviceSectorSize(t, 10, errors.New("failed"), bdpath)
 
-	bd = BlockDevice{Path: bdpath}
+	bd = blockDevice{Path: bdpath}
 	sz, err = bd.Size()
 	assert.EqualError(t, err, "failed")
 

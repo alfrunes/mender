@@ -1,4 +1,4 @@
-// Copyright 2017 Northern.tech AS
+// Copyright 2018 Northern.tech AS
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -52,6 +52,24 @@ const correctUpdateResponseMultipleDevices = `{
 		],
 		"artifact_name": "myapp-release-z-build-123"
 	}
+}`
+
+const correctDeltaUpdateResponse = `{
+	"id": "deplyoment-123",
+	"artifact": {
+		"source": {
+			"uri": "https://menderupdate.com",
+			"expire": "2016-03-11T13:03:17.063+0000"
+		},
+		"device_types_compatible": [
+			"BBB"
+		],
+		"artifact_name": "myapp-release-z-build-123",
+                "delta": {
+                "applies_to": "myapp-release-y-build-122",
+                "rootfs_size": 4094
+	        }
+        }
 }`
 
 const updateResponseEmptyDevices = `{
@@ -114,6 +132,7 @@ var updateTest = []struct {
 }{
 	{200, []byte(correctUpdateResponse), false, true, http.StatusOK},
 	{200, []byte(correctUpdateResponseMultipleDevices), false, true, http.StatusOK},
+	{200, []byte(correctDeltaUpdateResponse), false, true, http.StatusOK},
 	{200, []byte(updateResponseEmptyDevices), true, false, 0},
 	{204, []byte(""), false, true, http.StatusNoContent},
 	{404, []byte(`{

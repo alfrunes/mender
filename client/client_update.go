@@ -138,9 +138,9 @@ type UpdateResponse struct {
 		Delta             struct {
 			// Name of the previous artifact this patch applies to.
 			// Empty string if this is a "regular" update.
-			AppliesTo string
+			AppliesTo string `json:"applies_to"`
 			// Size of the resulting (patched) rootfs.
-			RootfsSize int64
+			RootfsSize int64 `json:"rootfs_size"`
 		}
 	}
 	ID string
@@ -159,7 +159,7 @@ func (ur UpdateResponse) DeltaAppliesTo() string {
 }
 
 func (ur UpdateResponse) DeltaSize() int64 {
-    return ur.Artifact.Delta.RootfsSize
+	return ur.Artifact.Delta.RootfsSize
 }
 
 func (ur UpdateResponse) URI() string {

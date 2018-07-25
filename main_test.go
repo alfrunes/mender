@@ -177,7 +177,7 @@ func TestBinarySize(t *testing.T) {
 	// so.
 	//
 	// When increasing, use current binary size on amd64 + 1M.
-	const maxSize int64 = 9525080
+	const maxSize int64 = 9771280
 	programName := "mender"
 	built := false
 

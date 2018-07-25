@@ -33,8 +33,8 @@ func (te *testErrorWriter) Write(p []byte) (int, error) {
 	return te.Written, te.Err
 }
 
-func TestLimitedIO(t *testing.T) {
-	lw := LimitedIO{ioutil.Discard, 5}
+func TestLimitedWriter(t *testing.T) {
+	lw := NewLimitedWriter(ioutil.Discard, 5)
 	assert.NotNil(t, lw)
 
 	// limit to 5 bytes
@@ -46,7 +46,7 @@ func TestLimitedIO(t *testing.T) {
 	assert.EqualError(t, err, syscall.ENOSPC.Error())
 
 	b := &bytes.Buffer{}
-	lw = LimitedIO{b, 5}
+	lw = NewLimitedWriter(b, 5)
 	// try to write more than 5 bytes
 	w, err := lw.Write([]byte("abcdefg"))
 	assert.Equal(t, 5, w)
@@ -55,27 +55,22 @@ func TestLimitedIO(t *testing.T) {
 
 	// success write
 	b = &bytes.Buffer{}
-	lw = LimitedIO{b, 5}
+	lw = NewLimitedWriter(b, 5)
 	w, err = lw.Write([]byte("foo"))
 	assert.NoError(t, err)
 	assert.Equal(t, len([]byte("foo")), w)
 
-	lw = LimitedIO{nil, 100}
+	lw = NewLimitedWriter(nil, 100)
 	_, err = lw.Write([]byte("foo"))
 	assert.Error(t, err)
-
-	lw = LimitedIO{
-		W: &testErrorWriter{
-			Err:     errors.New("fail"),
-			Written: 3,
-		},
-		N: 10,
+	tew := &testErrorWriter{
+		Err:     errors.New("fail"),
+		Written: 3,
 	}
+	lw = NewLimitedWriter(tew, 10)
 	w, err = lw.Write([]byte("foo"))
 	// error writer pretends to have written 3 bytes
 	assert.Equal(t, 3, w)
-	// this should have been extracted from remaining
-	assert.Equal(t, uint64(7), lw.N)
 	// and we should get an error from the error writer
 	assert.EqualError(t, err, "fail")
 }

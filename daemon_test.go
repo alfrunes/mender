@@ -54,6 +54,11 @@ func (f fakeDevice) InstallUpdate(from io.ReadCloser, sz int64) error {
 	return f.retInstallUpdate
 }
 
+func (f fakeDevice) InstallDeltaUpdate(patch io.ReadCloser, sz int64) error {
+	// TODO: Test DeltaUpdate
+	return nil
+}
+
 func (f fakeDevice) EnableUpdatedPartition() error {
 	return f.retEnablePart
 }

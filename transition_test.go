@@ -279,6 +279,10 @@ func TestTransitionReporting(t *testing.T) {
 			}
 			CompatibleDevices []string `json:"device_types_compatible"`
 			ArtifactName      string   `json:"artifact_name"`
+			Delta             struct {
+				AppliesTo  string `json:"applies_to"`
+				RootfsSize int64  `json:"rootfs_size"`
+			}
 		}{
 			Source: struct {
 				URI    string
@@ -288,6 +292,10 @@ func TestTransitionReporting(t *testing.T) {
 			},
 			CompatibleDevices: []string{"vexpress"},
 			ArtifactName:      "foo",
+			Delta: struct {
+				AppliesTo  string `json:"applies_to"`
+				RootfsSize int64  `json:"rootfs_size"`
+			}{},
 		},
 		ID: "foo",
 	}

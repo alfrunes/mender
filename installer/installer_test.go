@@ -1,4 +1,4 @@
-// Copyright 2017 Northern.tech AS
+// Copyright 2018 Northern.tech AS
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -116,6 +116,11 @@ func (d *fDevice) InstallUpdate(r io.ReadCloser, l int64) error {
 }
 
 func (d *fDevice) EnableUpdatedPartition() error { return nil }
+
+func (d *fDevice) InstallDeltaUpdate(r io.ReadCloser, l int64) error {
+	_, err := io.Copy(ioutil.Discard, r)
+	return err
+}
 
 const (
 	PublicRSAKey = `-----BEGIN PUBLIC KEY-----
