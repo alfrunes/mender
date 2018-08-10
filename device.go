@@ -21,8 +21,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/alfrunes/xdelta"
 	"github.com/mendersoftware/log"
-	"github.com/mendersoftware/mender-artifact/delta"
 	"github.com/pkg/errors"
 )
 
@@ -106,26 +106,28 @@ func (d *device) setupInstall(size int64) (BlockDevice, error) {
 			size, inactivePartition, bsz)
 		return nil, syscall.ENOSPC
 	}
-    return b, nil
+	return b, nil
 }
 
 // DeltaUpdate opens active and inactive partitions and returns them as reader
 // and writer respectively along with an allocated buffer for use in the xdelta wrapper
 // and an error if any.
 // NOTE: size is with respect to the patched rootfs, not the patch itself.
-// TODO: move duplicated code (from InstallUpdate) to a private function.
+// TODO: make it possible to pass delta flags (such as compression type),
+//       and check their validity.
 func (d *device) InstallDeltaUpdate(patch io.ReadCloser, size int64) error {
 	log.Debugf("Preparing to install delta update of size: %d", size)
 	if size < 0 {
 		return errors.New("Invalid delta update. Aborting.")
 	}
 
-    bd_inactive, err := d.setupInstall(size)
+	bd_inactive, err := d.setupInstall(size)
 	if err != nil {
 		return err
 	}
+	defer bd_inactive.Close()
 
-    // setup active partition aswell (RD_ONLY)
+	// setup active partition aswell (RD_ONLY)
 	activePartition, err := d.GetActive()
 	if err != nil {
 		return err
@@ -135,25 +137,11 @@ func (d *device) InstallDeltaUpdate(patch io.ReadCloser, size int64) error {
 		activePartition = filepath.Join("/dev", activePartition)
 	}
 	bd_active := NewBlockDevice(activePartition, typeUBI, size)
+	defer bd_active.Close()
 
-	ssz, err := bd_active.SectorSize()
-	if err != nil {
-		log.Errorf("failed to read sector size of block device %s: %v",
-			bd_inactive.GetPath(), err)
-		return err
-	}
-
-	// allocate buffer based on sector size and provide it for staging
-	// in io.CopyBuffer
-	if delta.ALLOCSIZE%ssz != 0 {
-		log.Errorf("Block size not a multiple of xdelta allocation size.")
-		return errors.New("Block size not a multiple of xdelta allocation size")
-	}
-	buf := make([]byte, delta.ALLOCSIZE)
-
-	// Use inactive partition as source, and patch inactive partition
-	decoding := delta.NewDeltaDecoding(bd_active, patch, bd_inactive, buf)
-	err = decoding.Decode()
+	// Use inactive partition as source, and decode patch to inactive partition
+	coder := xdelta.NewXdeltaCoder(bd_active, xdelta.XD3_ADLER32|xdelta.XD3_SECONDARY_DJW)
+	err = coder.Decode(patch, bd_inactive)
 
 	if err != nil {
 		log.Errorf("Delta update decoding failed: %v", err)
@@ -169,7 +157,7 @@ func (d *device) InstallUpdate(image io.ReadCloser, size int64) error {
 		return errors.New("Have invalid update. Aborting.")
 	}
 
-    b, err := d.setupInstall(size)
+	b, err := d.setupInstall(size)
 	if err != nil {
 		return err
 	}

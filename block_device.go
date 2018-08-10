@@ -33,7 +33,7 @@ type BlockDevice interface {
 	Close() error
 	Size() (uint64, error)
 	SectorSize() (int, error)
-    GetPath() string
+	GetPath() string
 }
 
 // BlockDeviceGetSizeFunc is a helper for obtaining the size of a block device.
@@ -166,9 +166,11 @@ func (bd *blockDevice) Seek(offset int64, whence int) (int64, error) {
 func (bd *blockDevice) Close() error {
 	var selferr error
 	if bd.out != nil {
-		if _, selferr := bd.w.Flush(); selferr != nil {
-			log.Errorf("error flushing buffer to partition %s: %v",
-				bd.Path, selferr)
+		if bd.w != nil {
+			if _, selferr := bd.w.Flush(); selferr != nil {
+				log.Errorf("error flushing buffer to partition %s: %v",
+					bd.Path, selferr)
+			}
 		}
 		if err := bd.out.Sync(); err != nil {
 			log.Errorf("failed to fsync partition %s: %v", bd.Path, err)
@@ -209,4 +211,4 @@ func (bd *blockDevice) SectorSize() (int, error) {
 	return BlockDeviceGetSectorSizeOf(out)
 }
 
-func (bd *blockDevice) GetPath() string {return bd.Path}
+func (bd *blockDevice) GetPath() string { return bd.Path }

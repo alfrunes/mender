@@ -1,4 +1,4 @@
-// Copyright 2017 Northern.tech AS
+// Copyright 2018 Northern.tech AS
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ package main
 
 import (
 	"errors"
+	"io/ioutil"
 	"os"
 	"testing"
 
@@ -207,4 +208,62 @@ func TestDeviceHasUpdate(t *testing.T) {
 	has, err = testDevice.HasUpdate()
 	assert.True(t, has)
 	assert.NoError(t, err)
+}
+
+const (
+	oldPart = "Lorem foobar Ipsum etc."
+	newPart = "Lorem Ipsum etc.\n"
+)
+
+var delta = []byte{0xd6, 0xc3, 0xc4, 0x00, 0x01, 0x01, 0x01, 0x06,
+	0x00, 0x13, 0x11, 0x00, 0x0b, 0x02, 0x01, 0x49, 0x70, 0x73, 0x75,
+	0x6d, 0x20, 0x65, 0x74, 0x63, 0x2e, 0x0a, 0x16, 0x0c, 0x00}
+
+// TestInstallDeltaUpdate emulates decoding of a delta update by using the
+// data declared above; and tests device.InstallDeltaUpdate.
+func TestInstallDeltaUpdate(t *testing.T) {
+	fakePartitions := partitions{}
+
+	activePart, err := ioutil.TempFile("", "active")
+	assert.NoError(t, err)
+	defer os.Remove(activePart.Name())
+	activePart.Write([]byte(oldPart))
+
+	deltaFile, err := ioutil.TempFile("", "delta")
+	assert.NoError(t, err)
+	defer os.Remove(deltaFile.Name())
+	deltaFile.Write(delta)
+	deltaFile.Seek(0, os.SEEK_SET)
+
+	out, err := ioutil.TempFile("", "test-install-delta")
+	assert.NoError(t, err)
+	defer os.Remove(out.Name())
+
+	fakePartitions.inactive = out.Name()
+	fakePartitions.active = activePart.Name()
+	testDevice := device{}
+	testDevice.partitions = &fakePartitions
+
+	deltaContent, _ := ioutil.ReadAll(deltaFile)
+	deltaFile.Seek(0, os.SEEK_SET)
+
+	old := BlockDeviceGetSizeOf
+	oldSectorSizeOf := BlockDeviceGetSectorSizeOf
+	BlockDeviceGetSizeOf = func(file *os.File) (uint64, error) {
+		return uint64(len(deltaContent)), nil
+	}
+	BlockDeviceGetSectorSizeOf = func(file *os.File) (int, error) {
+		return int(len(deltaContent)), nil
+	}
+
+	if err := testDevice.InstallDeltaUpdate(deltaFile, int64(len(deltaContent))); err != nil {
+		t.FailNow()
+	}
+
+	out.Seek(0, os.SEEK_SET)
+	outContent, _ := ioutil.ReadAll(out)
+	assert.Equal(t, outContent, []byte(newPart))
+
+	BlockDeviceGetSizeOf = old
+	BlockDeviceGetSectorSizeOf = oldSectorSizeOf
 }

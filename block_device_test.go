@@ -88,7 +88,7 @@ func TestBlockDeviceWrite(t *testing.T) {
 	assert.NoError(t, err)
 	bd := blockDevice{Path: bdpath}
 	n, err := bd.Write([]byte("foobar"))
-	assert.Equal(t, 0, n) // didn't write sectorsize number of bytes
+	assert.Equal(t, 6, n)
 	assert.NoError(t, err)
 	err = bd.Close() // also fsyncs
 	assert.NoError(t, err, syscall.ENOSPC.Error())

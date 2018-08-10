@@ -16,7 +16,6 @@ package utils
 
 import (
 	"io"
-	"os"
 	"syscall"
 )
 
@@ -86,36 +85,52 @@ func (lio *limitedIO) Write(p []byte) (int, error) {
 
 func (lio *limitedIO) Read(p []byte) (int, error) {
 	if lio.R == nil {
-		return 0, syscall.EBADF
+		return -1, syscall.EBADF
 	}
 	var bytesRead int
 	var err error
 	toRead := len(p)
 
 	if uint64(toRead) > lio.N {
-		toRead = int(lio.s)
-		r := io.LimitReader(lio.R, int64(toRead))
-		bytesRead, err = r.Read(p)
+		// Reading beyond EOF is not an error; as long as the correct
+		// number of bytes are returned.
+		bytesRead, err = lio.R.Read(p[:lio.N-lio.s])
 	} else {
 		bytesRead, err = lio.R.Read(p)
 	}
 
-	if bytesRead != 0 {
-		lio.s += uint64(bytesRead)
-	}
+	lio.s += uint64(bytesRead)
 	return bytesRead, err
 }
 
 func (lio *limitedIO) Seek(offset int64, whence int) (int64, error) {
-	if offset > int64(lio.N) {
-		// if we seek beyond the partition, we catch this by setting
-		// the seek to the end of the partition, and leave Read/write to
-		// handle subsequent I/O.
-		if whence == os.SEEK_SET || whence == os.SEEK_CUR {
-			return lio.S.Seek(int64(lio.N), whence)
-		}
+	if lio.S == nil {
+		return -1, syscall.EBADF
 	}
-	return lio.S.Seek(offset, whence)
+
+	if offset < 0 {
+		return int64(lio.s), syscall.EOVERFLOW
+	}
+	switch whence {
+	case io.SeekStart: // os.SEEK_SET
+		fallthrough
+	case io.SeekEnd: // os.SEEK_END
+		if uint64(offset) > lio.N {
+			return int64(lio.s), syscall.ENXIO
+		}
+		break
+	case io.SeekCurrent: // os.SEEK_CUR
+		if uint64(offset)+lio.s > lio.N {
+			return int64(lio.s), syscall.ENXIO
+		}
+		break
+	default:
+		return int64(lio.s), syscall.EINVAL
+	}
+
+	s, err := lio.S.Seek(offset, whence)
+	lio.s = uint64(s)
+	return s, err
 }
 
 // Writes in multiples of buffer size, and bufferes the rest.
@@ -125,7 +140,6 @@ func (lbw *limitedBufferedWriter) Write(p []byte) (int, error) {
 	}
 	var selferr error
 	var toWrite []byte
-	toBuffer := (len(p) + lbw.buf_n) % lbw.buf_sz
 
 	// EOF reached?
 	if (uint64(len(p)+lbw.buf_n) + lbw.s) > lbw.N {
@@ -147,6 +161,15 @@ func (lbw *limitedBufferedWriter) Write(p []byte) (int, error) {
 		}
 	}
 
+	// write is smaller than buffer, simply copy to buffer
+	if len(p)+lbw.buf_n < lbw.buf_sz {
+		copy(lbw.buf[lbw.buf_n:(lbw.buf_n+len(p))], p)
+		lbw.buf_n += len(p)
+		return len(p), nil
+	}
+
+	toBuffer := (len(p) + lbw.buf_n) % lbw.buf_sz
+
 	toWrite = append(lbw.buf[:lbw.buf_n], p[:(len(p)-toBuffer)]...)
 	w, err := lbw.W.Write(toWrite)
 	lbw.s += uint64(w)
@@ -155,8 +178,9 @@ func (lbw *limitedBufferedWriter) Write(p []byte) (int, error) {
 		selferr = err
 	}
 
+	copy(lbw.buf[:toBuffer], p[(len(p)-toBuffer):])
 	lbw.buf_n = toBuffer
-	copy(lbw.buf[:lbw.buf_n], p[(len(p)-lbw.buf_n):])
+	w += toBuffer
 
 	return w, selferr
 }

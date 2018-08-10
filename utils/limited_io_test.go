@@ -16,6 +16,7 @@ package utils
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"syscall"
 	"testing"
@@ -73,4 +74,47 @@ func TestLimitedWriter(t *testing.T) {
 	assert.Equal(t, 3, w)
 	// and we should get an error from the error writer
 	assert.EqualError(t, err, "fail")
+}
+
+// Should cover both Reader and ReadSeeker interface, since the former is just
+// a subset of interface of the latter.
+func TestLimitedReadSeeker(t *testing.T) {
+	b := []byte(`foobar 123456 abc foo`)
+	r := bytes.NewReader(b)
+	lr := NewLimitedReadSeeker(r, uint64(len(b)))
+
+	out := make([]byte, len(b))
+
+	// read the whole thing
+	bytesRead, err := lr.Read(out)
+	assert.NoError(t, err)
+	assert.Equal(t, bytesRead, len(b))
+	assert.Equal(t, out, b)
+
+	s, err := lr.Seek(3, io.SeekStart)
+	assert.NoError(t, err)
+	assert.Equal(t, s, int64(3))
+
+	// attempt to read beyond filesize should raise an error
+	bytesRead, err = lr.Read(out)
+	assert.NoError(t, err)
+	assert.Equal(t, bytesRead, len(b)-3)
+
+	// test all possible seek errors
+	// beyond file error
+	_, err = lr.Seek(int64(len(b)+1), io.SeekStart)
+	assert.EqualError(t, err, syscall.ENXIO.Error())
+	// negative offset
+	_, err = lr.Seek(int64(-1), io.SeekStart)
+	assert.EqualError(t, err, syscall.EOVERFLOW.Error())
+	// invalid whence flag
+	_, err = lr.Seek(0, -1)
+	assert.EqualError(t, err, syscall.EINVAL.Error())
+
+	lr = NewLimitedReadSeeker(nil, uint64(len(b)))
+	_, err = lr.Seek(0, 0)
+	assert.EqualError(t, err, syscall.EBADF.Error())
+
+	_, err = lr.Read(out)
+	assert.EqualError(t, err, syscall.EBADF.Error())
 }
