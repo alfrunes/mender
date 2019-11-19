@@ -47,7 +47,7 @@ type runOptionsType struct {
 	dataStore      string
 	imageFile      string
 	bootstrapForce bool
-	client.Config
+	conf.ClientConfig
 	logOptions   logOptionsType
 	setupOptions setupOptionsType // Options for setup subcommand
 }
@@ -170,7 +170,7 @@ func handleArtifactOperations(ctx *cli.Context, runOptions runOptionsType,
 	case "install":
 		vKey := config.GetVerificationKey()
 		return app.DoStandaloneInstall(deviceManager, runOptions.imageFile,
-			runOptions.Config, vKey, stateExec)
+			runOptions.ClientConfig, vKey, stateExec)
 
 	case "commit":
 		return app.DoStandaloneCommit(deviceManager, stateExec)

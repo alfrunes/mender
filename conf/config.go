@@ -20,10 +20,16 @@ import (
 	"strings"
 
 	"github.com/mendersoftware/log"
-	"github.com/mendersoftware/mender/client"
-	"github.com/mendersoftware/mender/installer"
 	"github.com/pkg/errors"
 )
+
+// MenderServer is a placeholder for a full server definition used when
+// multiple servers are given. The fields corresponds to the definitions
+// given in MenderConfig.
+type MenderServer struct {
+	ServerURL   string
+	TenantToken string
+}
 
 type MenderConfigFromFile struct {
 	// ClientProtocol "https"
@@ -71,7 +77,7 @@ type MenderConfigFromFile struct {
 	// Server JWT TenantToken
 	TenantToken string
 	// List of available servers, to which client can fall over
-	Servers []client.MenderServer
+	Servers []MenderServer
 }
 
 type MenderConfig struct {
@@ -131,7 +137,7 @@ func LoadConfig(mainConfigFile string, fallbackConfigFile string) (*MenderConfig
 		if config.ServerURL == "" {
 			log.Warn("No server URL(s) specified in mender configuration.")
 		}
-		config.Servers = make([]client.MenderServer, 1)
+		config.Servers = make([]MenderServer, 1)
 		config.Servers[0].ServerURL = config.ServerURL
 	} else if config.ServerURL != "" {
 		log.Error("In mender.conf: don't specify both Servers field " +
@@ -213,16 +219,25 @@ func SaveConfigFile(config *MenderConfigFromFile, filename string) error {
 	return nil
 }
 
-func (c *MenderConfig) GetHttpConfig() client.Config {
-	return client.Config{
+type ClientConfig struct {
+	ServerCert string
+	SkipVerify bool
+}
+
+func (c *MenderConfig) GetHttpConfig() ClientConfig {
+	return ClientConfig{
 		ServerCert: c.ServerCertificate,
-		IsHttps:    c.ClientProtocol == "https",
-		NoVerify:   c.HttpsClient.SkipVerify,
+		SkipVerify: c.HttpsClient.SkipVerify,
 	}
 }
 
-func (c *MenderConfig) GetDeviceConfig() installer.DualRootfsDeviceConfig {
-	return installer.DualRootfsDeviceConfig{
+type DualRootfsDeviceConfig struct {
+	RootfsPartA string
+	RootfsPartB string
+}
+
+func (c *MenderConfig) GetDeviceConfig() DualRootfsDeviceConfig {
+	return DualRootfsDeviceConfig{
 		RootfsPartA: c.RootfsPartA,
 		RootfsPartB: c.RootfsPartB,
 	}

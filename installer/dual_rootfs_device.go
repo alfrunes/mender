@@ -27,14 +27,10 @@ import (
 	"github.com/mendersoftware/log"
 	"github.com/mendersoftware/mender-artifact/artifact"
 	"github.com/mendersoftware/mender-artifact/handlers"
+	"github.com/mendersoftware/mender/conf"
 	"github.com/mendersoftware/mender/system"
 	"github.com/pkg/errors"
 )
-
-type DualRootfsDeviceConfig struct {
-	RootfsPartA string
-	RootfsPartB string
-}
 
 type dualRootfsDeviceImpl struct {
 	BootEnvReadWriter
@@ -72,7 +68,8 @@ func checkMounted(part string) string {
 }
 
 // Returns nil if config doesn't contain partition paths.
-func NewDualRootfsDevice(env BootEnvReadWriter, sc system.StatCommander, config DualRootfsDeviceConfig) DualRootfsDevice {
+func NewDualRootfsDevice(env BootEnvReadWriter, sc system.StatCommander,
+	config conf.DualRootfsDeviceConfig) DualRootfsDevice {
 	if config.RootfsPartA == "" || config.RootfsPartB == "" {
 		return nil
 	}

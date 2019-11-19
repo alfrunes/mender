@@ -20,7 +20,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mendersoftware/mender/client"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -106,7 +105,7 @@ func validateConfiguration(t *testing.T, actual *MenderConfig) {
 		ServerCertificate:            "/var/lib/mender/server.crt",
 		UpdateLogPath:                "/var/lib/mender/log/deployment.log",
 		DeviceTypeFile:               "/var/lib/mender/test_device_type",
-		Servers:                      []client.MenderServer{{ServerURL: "mender.io"}},
+		Servers:                      []MenderServer{{ServerURL: "mender.io"}},
 	}
 	if !assert.True(t, reflect.DeepEqual(actual, expectedConfig)) {
 		t.Logf("got:      %+v", actual)

@@ -41,7 +41,7 @@ type standaloneData struct {
 
 // This will be run manually from command line ONLY
 func DoStandaloneInstall(device *dev.DeviceManager, updateURI string,
-	clientConfig client.Config, vKey []byte,
+	clientConfig conf.ClientConfig, vKey []byte,
 	stateExec statescript.Executor) error {
 
 	var image io.ReadCloser

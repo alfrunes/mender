@@ -27,6 +27,7 @@ import (
 
 	"github.com/mendersoftware/log"
 	"github.com/mendersoftware/mender/client"
+	"github.com/mendersoftware/mender/conf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -354,7 +355,7 @@ func TestReportScriptStatus(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := client.NewApiClient(
-		client.Config{ServerCert: "", IsHttps: false, NoVerify: true},
+		conf.ClientConfig{ServerCert: "", SkipVerify: true},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)

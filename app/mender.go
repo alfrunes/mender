@@ -199,7 +199,7 @@ func (m *Mender) IsAuthorized() bool {
 func (m *Mender) Authorize() menderError {
 	var rsp []byte
 	var err error
-	var server *client.MenderServer
+	var server *conf.MenderServer
 
 	if m.authMgr.IsAuthorized() {
 		log.Info("authorization data present and valid, skipping authorization attempt")
@@ -414,7 +414,7 @@ func reauthorize(m *Mender) func(string) (client.AuthToken, error) {
 
 // nextServerIterator returns an iterator like function that cycles through the
 // list of available servers in mender.conf.MenderConfig.Servers
-func nextServerIterator(m *Mender) func() *client.MenderServer {
+func nextServerIterator(m *Mender) func() *conf.MenderServer {
 	numServers := len(m.Config.Servers)
 	if m.Config.Servers == nil || numServers == 0 {
 		log.Error("Empty server list! Make sure at least one server" +
@@ -423,8 +423,8 @@ func nextServerIterator(m *Mender) func() *client.MenderServer {
 	}
 
 	idx := 0
-	return func() (server *client.MenderServer) {
-		var ret *client.MenderServer
+	return func() (server *conf.MenderServer) {
+		var ret *conf.MenderServer
 		if idx < numServers {
 			ret = &m.Config.Servers[idx]
 			idx++

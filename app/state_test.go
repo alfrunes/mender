@@ -4575,8 +4575,8 @@ func subProcessSetup(t *testing.T,
 
 	config := conf.MenderConfig{
 		MenderConfigFromFile: conf.MenderConfigFromFile{
-			Servers: []client.MenderServer{
-				client.MenderServer{
+			Servers: []conf.MenderServer{
+				conf.MenderServer{
 					ServerURL: "https://not-used",
 				},
 			},

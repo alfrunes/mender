@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mendersoftware/mender/conf"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
@@ -44,7 +45,7 @@ func TestLogUploadClient(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)

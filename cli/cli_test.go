@@ -32,7 +32,6 @@ import (
 
 	"github.com/mendersoftware/log"
 	"github.com/mendersoftware/mender/app"
-	"github.com/mendersoftware/mender/client"
 	"github.com/mendersoftware/mender/conf"
 	"github.com/mendersoftware/mender/datastore"
 	dev "github.com/mendersoftware/mender/device"
@@ -86,13 +85,13 @@ func TestRunDaemon(t *testing.T) {
 	}
 	config := conf.MenderConfig{
 		MenderConfigFromFile: conf.MenderConfigFromFile{
-			Servers: []client.MenderServer{{}},
+			Servers: []conf.MenderServer{{}},
 		},
 	}
 	pieces := app.MenderPieces{
 		Store: store.NewMemStore(),
 		DualRootfsDevice: installer.NewDualRootfsDevice(
-			nil, nil, installer.DualRootfsDeviceConfig{}),
+			nil, nil, conf.DualRootfsDeviceConfig{}),
 	}
 
 	pieces.AuthMgr = app.NewAuthManager(app.AuthManagerConfig{
@@ -294,7 +293,7 @@ func TestMainBootstrap(t *testing.T) {
 	cpath := path.Join(tdir, "mender.config")
 	writeConfig(t, cpath, conf.MenderConfig{
 		MenderConfigFromFile: conf.MenderConfigFromFile{
-			Servers: []client.MenderServer{{ServerURL: ts.URL}},
+			Servers: []conf.MenderServer{{ServerURL: ts.URL}},
 		},
 	})
 
@@ -451,7 +450,7 @@ func TestInitDaemon(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 	app.DeploymentLogger = app.NewDeploymentLogManager(tempDir)
 	bootstrap := false
-	dualRootfs := installer.NewDualRootfsDevice(nil, nil, installer.DualRootfsDeviceConfig{})
+	dualRootfs := installer.NewDualRootfsDevice(nil, nil, conf.DualRootfsDeviceConfig{})
 	d, err := initDaemon(&conf.MenderConfig{}, dualRootfs, &installer.UBootEnv{},
 		&runOptionsType{dataStore: tempDir, bootstrapForce: bootstrap})
 	require.Nil(t, err)

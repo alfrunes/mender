@@ -130,7 +130,7 @@ func newTestMender(runner *stest.TestOSCalls, config conf.MenderConfig,
 func newDefaultTestMender() *Mender {
 	return newTestMender(nil, conf.MenderConfig{
 		MenderConfigFromFile: conf.MenderConfigFromFile{
-			Servers: []client.MenderServer{{}},
+			Servers: []conf.MenderServer{{}},
 		},
 	}, testMenderPieces{})
 }
@@ -255,7 +255,7 @@ func Test_CheckUpdateSimple(t *testing.T) {
 
 	mender = newTestMender(nil, conf.MenderConfig{
 		MenderConfigFromFile: conf.MenderConfigFromFile{
-			Servers: []client.MenderServer{{ServerURL: "bogusurl"}},
+			Servers: []conf.MenderServer{{ServerURL: "bogusurl"}},
 		},
 	}, testMenderPieces{})
 
@@ -271,7 +271,7 @@ func Test_CheckUpdateSimple(t *testing.T) {
 	mender = newTestMender(nil,
 		conf.MenderConfig{
 			MenderConfigFromFile: conf.MenderConfigFromFile{
-				Servers: []client.MenderServer{{ServerURL: srv.URL}},
+				Servers: []conf.MenderServer{{ServerURL: srv.URL}},
 			},
 		},
 		testMenderPieces{})
@@ -416,7 +416,7 @@ func TestMenderAuthorize(t *testing.T) {
 	err := mender.Authorize()
 	assert.Error(t, err)
 
-	mender.Config.Servers = make([]client.MenderServer, 1)
+	mender.Config.Servers = make([]conf.MenderServer, 1)
 	mender.Config.Servers[0].ServerURL = srv.URL
 	authMgr.authorized = true
 
@@ -484,7 +484,7 @@ func TestMenderReportStatus(t *testing.T) {
 	mender := newTestMender(nil,
 		conf.MenderConfig{
 			MenderConfigFromFile: conf.MenderConfigFromFile{
-				Servers: []client.MenderServer{{ServerURL: srv.URL}},
+				Servers: []conf.MenderServer{{ServerURL: srv.URL}},
 			},
 		},
 		testMenderPieces{
@@ -549,7 +549,7 @@ func TestMenderLogUpload(t *testing.T) {
 	mender := newTestMender(nil,
 		conf.MenderConfig{
 			MenderConfigFromFile: conf.MenderConfigFromFile{
-				Servers: []client.MenderServer{{ServerURL: srv.URL}},
+				Servers: []conf.MenderServer{{ServerURL: srv.URL}},
 			},
 		},
 		testMenderPieces{
@@ -613,7 +613,7 @@ func TestAuthToken(t *testing.T) {
 	mender := newTestMender(nil,
 		conf.MenderConfig{
 			MenderConfigFromFile: conf.MenderConfigFromFile{
-				Servers: []client.MenderServer{{ServerURL: ts.URL}},
+				Servers: []conf.MenderServer{{ServerURL: ts.URL}},
 			},
 		},
 		testMenderPieces{
@@ -670,7 +670,7 @@ func TestMenderInventoryRefresh(t *testing.T) {
 	mender := newTestMender(nil,
 		conf.MenderConfig{
 			MenderConfigFromFile: conf.MenderConfigFromFile{
-				Servers: []client.MenderServer{{ServerURL: srv.URL}},
+				Servers: []conf.MenderServer{{ServerURL: srv.URL}},
 			},
 		},
 		testMenderPieces{
@@ -1013,7 +1013,7 @@ func TestReauthorization(t *testing.T) {
 	mender := newTestMender(nil,
 		conf.MenderConfig{
 			MenderConfigFromFile: conf.MenderConfigFromFile{
-				Servers: []client.MenderServer{{ServerURL: srv.URL}},
+				Servers: []conf.MenderServer{{ServerURL: srv.URL}},
 			},
 		},
 		testMenderPieces{})
@@ -1073,7 +1073,7 @@ func TestFailoverServers(t *testing.T) {
 		ID: "foo",
 	}
 	// Create mender- and conf.MenderConfig structs
-	srvrs := make([]client.MenderServer, 2)
+	srvrs := make([]conf.MenderServer, 2)
 	srvrs[0].ServerURL = srv1.URL
 	srvrs[1].ServerURL = srv2.URL
 	srv2.Auth.Token = []byte(`jwt`)

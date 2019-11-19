@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mendersoftware/mender/conf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,11 +36,11 @@ func dummy_reauthfunc(str string) (AuthToken, error) {
 	return AuthToken("dummy"), nil
 }
 
-func dummy_srvMngmntFunc(url string) func() *MenderServer {
+func dummy_srvMngmntFunc(url string) func() *conf.MenderServer {
 	// mimic single server callback
-	srv := MenderServer{ServerURL: url}
+	srv := conf.MenderServer{ServerURL: url}
 	called := false
-	return func() *MenderServer {
+	return func() *conf.MenderServer {
 		if called {
 			called = false
 			return nil
@@ -52,17 +53,17 @@ func dummy_srvMngmntFunc(url string) func() *MenderServer {
 
 func TestHttpClient(t *testing.T) {
 	cl, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, cl)
 
 	// no https config, we should obtain a httpClient
-	cl, err = NewApiClient(Config{})
+	cl, err = NewApiClient(conf.ClientConfig{})
 	assert.NotNil(t, cl)
 
 	// missing cert in config should yield an error
 	cl, err = NewApiClient(
-		Config{"missing.crt", true, false},
+		conf.ClientConfig{"missing.crt", false},
 	)
 	assert.Nil(t, cl)
 	assert.NotNil(t, err)
@@ -70,7 +71,7 @@ func TestHttpClient(t *testing.T) {
 
 func TestApiClientRequest(t *testing.T) {
 	cl, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, cl)
 
@@ -150,7 +151,7 @@ func TestClientConnectionTimeout(t *testing.T) {
 	}()
 
 	cl, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, cl)
 	assert.NoError(t, err)
@@ -190,7 +191,7 @@ func TestHttpClientUrl(t *testing.T) {
 
 // Test that our loaded certificates include the system CAs, and our own.
 func TestCaLoading(t *testing.T) {
-	conf := Config{
+	conf := conf.ClientConfig{
 		ServerCert: "server.crt",
 	}
 
@@ -232,7 +233,7 @@ func TestEmptySystemCertPool(t *testing.T) {
 	err = os.Setenv("SSL_CERT_FILE", tmpdir+"idonotexist.crt") // fakes a non existing cert-file
 	assert.NoError(t, err)
 
-	conf := Config{
+	conf := conf.ClientConfig{
 		ServerCert: "server.crt",
 	}
 
@@ -324,7 +325,7 @@ func TestUnMarshalErrorMessage(t *testing.T) {
 // In addition it also covers the case with a 'nil' ServerManagementFunc.
 func TestFailoverAPICall(t *testing.T) {
 	cl, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, cl)
 
@@ -343,13 +344,15 @@ func TestFailoverAPICall(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	mulServerfunc := func() func() *MenderServer {
+	mulServerfunc := func() func() *conf.MenderServer {
 		// mimic multiple servers callback where the first one is a faker
-		srvrs := []MenderServer{MenderServer{ServerURL: "fakeURL.404"},
-			MenderServer{ServerURL: ts.URL}}
+		srvrs := []conf.MenderServer{
+			conf.MenderServer{ServerURL: "fakeURL.404"},
+			conf.MenderServer{ServerURL: ts.URL},
+		}
 		idx := 0
-		return func() *MenderServer {
-			var ret *MenderServer
+		return func() *conf.MenderServer {
+			var ret *conf.MenderServer
 			if idx < len(srvrs) {
 				ret = &srvrs[idx]
 				idx++

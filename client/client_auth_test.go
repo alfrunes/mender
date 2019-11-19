@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mendersoftware/mender/conf"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -98,7 +99,7 @@ func TestClientAuth(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -127,7 +128,7 @@ func TestClientAuthExpiredCert(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.expired.crt", true, false},
+		conf.ClientConfig{"server.expired.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -150,7 +151,7 @@ func TestClientAuthUnknownAuthorityCert(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.unknown-authority.crt", true, false},
+		conf.ClientConfig{"server.unknown-authority.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -173,7 +174,7 @@ func TestClientAuthNoCert(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.non-existing.crt", true, false},
+		conf.ClientConfig{"server.non-existing.crt", false},
 	)
 	assert.Nil(t, ac)
 	assert.Error(t, err)

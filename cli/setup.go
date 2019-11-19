@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/mendersoftware/log"
-	"github.com/mendersoftware/mender/client"
 	"github.com/mendersoftware/mender/conf"
 
 	"github.com/pkg/errors"
@@ -806,7 +805,7 @@ func (opts *setupOptionsType) saveConfigOptions(
 		// Default devicetype file as defined in device.go
 		config.DeviceTypeFile = conf.DefaultDeviceTypeFile
 	}
-	config.Servers = []client.MenderServer{
+	config.Servers = []conf.MenderServer{
 		{
 			ServerURL: opts.serverURL},
 	}

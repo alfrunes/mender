@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mendersoftware/mender/conf"
 	stest "github.com/mendersoftware/mender/system/testing"
 	"github.com/stretchr/testify/assert"
 )
@@ -209,7 +210,7 @@ func Test_Rollback_OK(t *testing.T) {
 }
 
 func TestDeviceVerifyReboot(t *testing.T) {
-	config := DualRootfsDeviceConfig{
+	config := conf.DualRootfsDeviceConfig{
 		"part1",
 		"part2",
 	}

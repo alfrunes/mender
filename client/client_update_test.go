@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mendersoftware/mender/conf"
 	"github.com/mendersoftware/mender/datastore"
 	"github.com/stretchr/testify/assert"
 )
@@ -181,7 +182,7 @@ func Test_GetScheduledUpdate_errorParsingResponse_UpdateFailing(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -206,7 +207,7 @@ func Test_GetScheduledUpdate_responseMissingParameters_UpdateFailing(t *testing.
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -230,7 +231,7 @@ func Test_GetScheduledUpdate_ParsingResponseOK_updateSuccess(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -256,7 +257,7 @@ func Test_FetchUpdate_noContent_UpdateFailing(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -279,7 +280,7 @@ func Test_FetchUpdate_invalidRequest_UpdateFailing(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)
@@ -302,7 +303,7 @@ func Test_FetchUpdate_correctContent_UpdateFetched(t *testing.T) {
 	defer ts.Close()
 
 	ac, err := NewApiClient(
-		Config{"server.crt", true, false},
+		conf.ClientConfig{"server.crt", false},
 	)
 	assert.NotNil(t, ac)
 	assert.NoError(t, err)

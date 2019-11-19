@@ -327,7 +327,7 @@ func SetupCLI(args []string) error {
 		cli.StringFlag{
 			Name:        "trusted-certs, E",
 			Usage:       "Trusted server certificates `FILE` path.",
-			Destination: &runOptions.Config.ServerCert},
+			Destination: &runOptions.ClientConfig.ServerCert},
 		cli.BoolFlag{
 			Name:        "forcebootstrap, F",
 			Usage:       "Force bootstrap.",
@@ -339,7 +339,7 @@ func SetupCLI(args []string) error {
 		cli.BoolFlag{
 			Name:        "skipverify",
 			Usage:       "Skip certificate verification.",
-			Destination: &runOptions.Config.NoVerify},
+			Destination: &runOptions.ClientConfig.SkipVerify},
 	}
 	cli.HelpPrinter = upgradeHelpPrinter(cli.HelpPrinter)
 	cli.VersionPrinter = func(c *cli.Context) {
@@ -357,7 +357,7 @@ func (runOptions *runOptionsType) commonCLIHandler(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if runOptions.Config.NoVerify {
+	if runOptions.ClientConfig.SkipVerify {
 		config.HttpsClient.SkipVerify = true
 	}
 
@@ -469,11 +469,13 @@ func (runOptions *runOptionsType) setupCLIHandler(ctx *cli.Context) error {
 	if ctx.IsSet("data") {
 		runOptions.dataStore = ctx.String("data")
 	}
-	if runOptions.Config.ServerCert != "" &&
+	if runOptions.ClientConfig.ServerCert != "" &&
 		runOptions.setupOptions.serverCert == "" {
-		runOptions.setupOptions.serverCert = runOptions.Config.ServerCert
+		runOptions.setupOptions.
+			serverCert = runOptions.ClientConfig.ServerCert
 	} else {
-		runOptions.Config.ServerCert = runOptions.setupOptions.serverCert
+		runOptions.ClientConfig.
+			ServerCert = runOptions.setupOptions.serverCert
 	}
 	return runOptions.handleCLIOptions(ctx)
 }

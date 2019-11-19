@@ -22,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mendersoftware/mender/client"
 	"github.com/mendersoftware/mender/conf"
 	dev "github.com/mendersoftware/mender/device"
 	"github.com/mendersoftware/mender/installer"
@@ -60,9 +59,9 @@ func Test_doManualUpdate_noParams_fail(t *testing.T) {
 	deviceType := zeroLengthDeviceTypeFile(t)
 	defer os.Remove(deviceType)
 
-	dualRootfsDevice := installer.NewDualRootfsDevice(nil, nil, installer.DualRootfsDeviceConfig{})
+	dualRootfsDevice := installer.NewDualRootfsDevice(nil, nil, conf.DualRootfsDeviceConfig{})
 	if err := DoStandaloneInstall(getTestDeviceManager(dualRootfsDevice, &config, deviceType, dbdir),
-		"", client.Config{}, nil, dev.NewStateScriptExecutor(&config)); err == nil {
+		"", conf.ClientConfig{}, nil, dev.NewStateScriptExecutor(&config)); err == nil {
 
 		t.FailNow()
 	}
@@ -73,7 +72,7 @@ func Test_doManualUpdate_invalidHttpsClientConfig_updateFails(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dbdir)
 
-	runOptions := client.Config{
+	runOptions := conf.ClientConfig{
 		ServerCert: "non-existing",
 	}
 	imageFile := "https://update"
@@ -81,7 +80,7 @@ func Test_doManualUpdate_invalidHttpsClientConfig_updateFails(t *testing.T) {
 	defer os.Remove(deviceType)
 
 	config := conf.MenderConfig{}
-	dualRootfsDevice := installer.NewDualRootfsDevice(nil, nil, installer.DualRootfsDeviceConfig{})
+	dualRootfsDevice := installer.NewDualRootfsDevice(nil, nil, conf.DualRootfsDeviceConfig{})
 	if err := DoStandaloneInstall(getTestDeviceManager(
 		dualRootfsDevice, &config, deviceType, dbdir),
 		imageFile, runOptions, nil,
@@ -96,7 +95,7 @@ func Test_doManualUpdate_nonExistingFile_fail(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dbdir)
 
-	fakeDevice := installer.NewDualRootfsDevice(nil, nil, installer.DualRootfsDeviceConfig{})
+	fakeDevice := installer.NewDualRootfsDevice(nil, nil, conf.DualRootfsDeviceConfig{})
 	imageFile := "non-existing"
 	deviceType := zeroLengthDeviceTypeFile(t)
 	defer os.Remove(deviceType)
@@ -104,7 +103,7 @@ func Test_doManualUpdate_nonExistingFile_fail(t *testing.T) {
 	config := conf.MenderConfig{}
 	if err := DoStandaloneInstall(getTestDeviceManager(
 		fakeDevice, &config, deviceType, dbdir),
-		imageFile, client.Config{}, nil,
+		imageFile, conf.ClientConfig{}, nil,
 		dev.NewStateScriptExecutor(&config)); err == nil {
 
 		t.FailNow()
@@ -116,14 +115,14 @@ func Test_doManualUpdate_networkUpdateNoClient_fail(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dbdir)
 
-	fakeDevice := installer.NewDualRootfsDevice(nil, nil, installer.DualRootfsDeviceConfig{})
+	fakeDevice := installer.NewDualRootfsDevice(nil, nil, conf.DualRootfsDeviceConfig{})
 	imageFile := "http://non-existing"
 	deviceType := zeroLengthDeviceTypeFile(t)
 	defer os.Remove(deviceType)
 
 	config := conf.MenderConfig{}
 	if err := DoStandaloneInstall(getTestDeviceManager(fakeDevice, &config, deviceType, dbdir),
-		imageFile, client.Config{}, nil, dev.NewStateScriptExecutor(&config)); err == nil {
+		imageFile, conf.ClientConfig{}, nil, dev.NewStateScriptExecutor(&config)); err == nil {
 
 		t.FailNow()
 	}
@@ -134,15 +133,14 @@ func Test_doManualUpdate_networkClientExistsNoServer_fail(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dbdir)
 
-	fakeDevice := installer.NewDualRootfsDevice(nil, nil, installer.DualRootfsDeviceConfig{})
+	fakeDevice := installer.NewDualRootfsDevice(nil, nil, conf.DualRootfsDeviceConfig{})
 	imageFile := "http://non-existing"
 	deviceType := zeroLengthDeviceTypeFile(t)
 	defer os.Remove(deviceType)
 
-	fakeClientConfig := client.Config{
+	fakeClientConfig := conf.ClientConfig{
 		ServerCert: "server.crt",
-		IsHttps:    true,
-		NoVerify:   false,
+		SkipVerify: false,
 	}
 
 	config := conf.MenderConfig{}
@@ -191,7 +189,7 @@ func Test_doManualUpdate_existingFile_updateSuccess(t *testing.T) {
 	}
 	err = DoStandaloneInstall(getTestDeviceManager(
 		fakeDev, &config, deviceType, dbdir),
-		imageFileName, client.Config{},
+		imageFileName, conf.ClientConfig{},
 		nil, dev.NewStateScriptExecutor(&config))
 	assert.NoError(t, err)
 }
@@ -824,8 +822,8 @@ func TestStandaloneModuleInstall(t *testing.T) {
 
 			config := conf.MenderConfig{
 				MenderConfigFromFile: conf.MenderConfigFromFile{
-					Servers: []client.MenderServer{
-						client.MenderServer{
+					Servers: []conf.MenderServer{
+						conf.MenderServer{
 							ServerURL: "https://not-used",
 						},
 					},
@@ -845,7 +843,7 @@ func TestStandaloneModuleInstall(t *testing.T) {
 			device.ArtifactInfoFile = path.Join(tmpdir, "artifact_info")
 
 			err = DoStandaloneInstall(device, artPath,
-				client.Config{}, nil, stateExec)
+				conf.ClientConfig{}, nil, stateExec)
 			if c.errInstall != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), c.errInstall)

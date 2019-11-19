@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/mendersoftware/log"
+	"github.com/mendersoftware/mender/conf"
 	"github.com/pkg/errors"
 	"golang.org/x/net/http2"
 )
@@ -69,15 +70,6 @@ var (
 // configuration.
 type ApiRequester interface {
 	Do(req *http.Request) (*http.Response, error)
-}
-
-// MenderServer is a placeholder for a full server definition used when
-// multiple servers are given. The fields corresponds to the definitions
-// given in MenderConfig.
-type MenderServer struct {
-	ServerURL string
-	// TODO: Move all possible server specific configurations in
-	//       MenderConfig over to this struct. (e.g. TenantToken?)
 }
 
 // APIError is an error type returned after receiving an error message from the
@@ -130,7 +122,7 @@ type ApiClient struct {
 type ClientReauthorizeFunc func(string) (AuthToken, error)
 
 // function type for setting server (in case of multiple fallover servers)
-type ServerManagementFunc func() *MenderServer
+type ServerManagementFunc func() *conf.MenderServer
 
 // Return a new ApiRequest
 func (a *ApiClient) Request(code AuthToken, nextServerIterator ServerManagementFunc, reauth ClientReauthorizeFunc) *ApiRequest {
@@ -233,19 +225,19 @@ func (ar *ApiRequest) Do(req *http.Request) (*http.Response, error) {
 	return r, err
 }
 
-func NewApiClient(conf Config) (*ApiClient, error) {
+func NewApiClient(conf conf.ClientConfig) (*ApiClient, error) {
 	return New(conf)
 }
 
 // New initializes new client
-func New(conf Config) (*ApiClient, error) {
+func New(config conf.ClientConfig) (*ApiClient, error) {
 
 	var client *http.Client
-	if conf == (Config{}) {
+	if config == (conf.ClientConfig{}) {
 		client = newHttpClient()
 	} else {
 		var err error
-		client, err = newHttpsClient(conf)
+		client, err = newHttpsClient(config)
 		if err != nil {
 			return nil, err
 		}
@@ -284,7 +276,7 @@ func (s *ClientServerCertificateError) Error() string {
 	return errors.Wrapf(s.err, "cannot initialize server trust").Error()
 }
 
-func newHttpsClient(conf Config) (*http.Client, error) {
+func newHttpsClient(conf conf.ClientConfig) (*http.Client, error) {
 	client := newHttpClient()
 
 	trustedcerts, err := loadServerTrust(conf)
@@ -292,12 +284,12 @@ func newHttpsClient(conf Config) (*http.Client, error) {
 		return nil, &ClientServerCertificateError{err}
 	}
 
-	if conf.NoVerify {
+	if conf.SkipVerify {
 		log.Warnf("certificate verification skipped..")
 	}
 	tlsc := tls.Config{
 		RootCAs:            trustedcerts,
-		InsecureSkipVerify: conf.NoVerify,
+		InsecureSkipVerify: conf.SkipVerify,
 	}
 	transport := http.Transport{
 		TLSClientConfig: &tlsc,
@@ -308,15 +300,7 @@ func newHttpsClient(conf Config) (*http.Client, error) {
 	return client, nil
 }
 
-// Client configuration
-
-type Config struct {
-	ServerCert string
-	IsHttps    bool
-	NoVerify   bool
-}
-
-func loadServerTrust(conf Config) (*x509.CertPool, error) {
+func loadServerTrust(conf conf.ClientConfig) (*x509.CertPool, error) {
 	if conf.ServerCert == "" {
 		// Returning nil will make tls.Config.RootCAs nil, which causes
 		// tls module to use system certs.
