@@ -42,7 +42,7 @@ func NewAuth() *AuthClient {
 	return &ac
 }
 
-func (u *AuthClient) Request(api ApiRequester, server string, dataSrc AuthDataMessenger) ([]byte, error) {
+func (u *AuthClient) Request(api ApiRequester, dataSrc AuthDataMessenger) ([]byte, error) {
 
 	req, err := makeAuthRequest(server, dataSrc)
 	if err != nil {

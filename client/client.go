@@ -125,12 +125,11 @@ type ClientReauthorizeFunc func(string) (AuthToken, error)
 type ServerManagementFunc func() *conf.MenderServer
 
 // Return a new ApiRequest
-func (a *ApiClient) Request(code AuthToken, nextServerIterator ServerManagementFunc, reauth ClientReauthorizeFunc) *ApiRequest {
+func (a *ApiClient) Request() *ApiRequest {
 	return &ApiRequest{
-		api:                a,
-		auth:               code,
-		nextServerIterator: nextServerIterator,
-		revoke:             reauth,
+		api:     a,
+		auth:    code,
+		servers: serverList,
 	}
 }
 
@@ -142,9 +141,8 @@ type ApiRequest struct {
 	// authorization code to use for requests
 	auth AuthToken
 	// anonymous function to initiate reauthorization
-	revoke ClientReauthorizeFunc
-	// anonymous function to set server
-	nextServerIterator ServerManagementFunc
+	revoke  ClientReauthorizeFunc
+	servers []conf.MenderServer
 }
 
 // tryDo is a wrapper around http.Do that also tries to reauthorize

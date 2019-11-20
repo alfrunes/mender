@@ -15,7 +15,7 @@ package app
 
 import (
 	"os"
-	"strings"
+	"regexp"
 
 	"github.com/mendersoftware/log"
 	"github.com/mendersoftware/mender/client"
@@ -29,7 +29,7 @@ type AuthManager interface {
 	// returns true if authorization data is current and valid
 	IsAuthorized() bool
 	// returns device's authorization token
-	AuthToken() (client.AuthToken, error)
+	AuthToken(serverIndex int) (client.AuthToken, error)
 	// removes authentication token
 	RemoveAuthToken() error
 	// check if device key is available
@@ -45,17 +45,17 @@ const (
 )
 
 type MenderAuthManager struct {
-	store       store.Store
-	keyStore    *store.Keystore
-	idSrc       dev.IdentityDataGetter
-	tenantToken client.AuthToken
+	store    store.Store
+	keyStore *store.Keystore
+	idSrc    dev.IdentityDataGetter
+	servers  []conf.MenderServer
 }
 
 type AuthManagerConfig struct {
 	AuthDataStore  store.Store            // authorization data store
 	KeyStore       *store.Keystore        // key storage
 	IdentitySource dev.IdentityDataGetter // provider of identity data
-	TenantToken    []byte                 // tenant token
+	Servers        []conf.MenderServer    // []{URL, TenantToken}
 }
 
 func NewAuthManager(conf AuthManagerConfig) AuthManager {
@@ -66,10 +66,10 @@ func NewAuthManager(conf AuthManagerConfig) AuthManager {
 	}
 
 	mgr := &MenderAuthManager{
-		store:       conf.AuthDataStore,
-		keyStore:    conf.KeyStore,
-		idSrc:       conf.IdentitySource,
-		tenantToken: client.AuthToken(conf.TenantToken),
+		store:    conf.AuthDataStore,
+		keyStore: conf.KeyStore,
+		idSrc:    conf.IdentitySource,
+		servers:  conf.MenderServers,
 	}
 
 	if err := mgr.keyStore.Load(); err != nil && !store.IsNoKeys(err) {
@@ -77,6 +77,11 @@ func NewAuthManager(conf AuthManagerConfig) AuthManager {
 		// Otherwise ignore error returned from Load() call. It will
 		// just result in an empty keyStore which in turn will cause
 		// regeneration of keys.
+	}
+
+	if _, err := m.store.ReadAll(datastore.AuthToken); err != nil {
+		// Delete key if it exists
+		m.store.Remove(datastore.AuthToken)
 	}
 
 	return mgr
@@ -97,7 +102,8 @@ func (m *MenderAuthManager) IsAuthorized() bool {
 	return true
 }
 
-func (m *MenderAuthManager) MakeAuthRequest() (*client.AuthRequest, error) {
+func (m *MenderAuthManager) MakeAuthRequest(
+	serverIndex int) (*client.AuthRequest, error) {
 
 	var err error
 	authd := client.AuthReqData{}
@@ -115,7 +121,7 @@ func (m *MenderAuthManager) MakeAuthRequest() (*client.AuthRequest, error) {
 		return nil, errors.Wrapf(err, "failed to obtain device public key")
 	}
 
-	tentok := strings.TrimSpace(string(m.tenantToken))
+	tentok := strings.TrimSpace(string(m.servers[serverIndex].TenantToken))
 
 	log.Debugf("tenant token: %s", tentok)
 
@@ -142,32 +148,54 @@ func (m *MenderAuthManager) MakeAuthRequest() (*client.AuthRequest, error) {
 	}, nil
 }
 
-func (m *MenderAuthManager) RecvAuthResponse(data []byte) error {
+// Creates authtoken lmdb key from server url
+func prepareAuthTokenKey(serverURL string) string {
+	storeKey := fmt.Sprintf(datastore.AuthTokenNameF, serverURL)
+	hostRegex, err := regexp.Compile(`(https?://)([^/]+)/?`)
+	if err != nil {
+		// Should never occur - return default token
+		return datastore.AuthToken
+	}
+	storeKey = hostRegex.ReplaceAllString(storeKey, `\2`)
+	return storeKey
+}
+
+func (m *MenderAuthManager) RecvAuthResponse(
+	serverIndex int, data []byte) error {
 	if len(data) == 0 {
 		return errors.New("empty auth response data")
 	}
 
-	if err := m.store.WriteAll(datastore.AuthTokenName, data); err != nil {
+	storeKey := prepareAuthTokenKey(m.servers[serverIndex].ServerURL)
+
+	if err := m.store.WriteAll(storeKey, data); err != nil {
 		return errors.Wrapf(err, "failed to save auth token")
 	}
 	return nil
 }
 
-func (m *MenderAuthManager) AuthToken() (client.AuthToken, error) {
-	data, err := m.store.ReadAll(datastore.AuthTokenName)
+func (m *MenderAuthManager) AuthToken(
+	serverIndex int) (client.AuthToken, error) {
+	// Prepare storage key: prefixed with server host name
+	storeKey := prepareAuthTokenKey(m.servers[serverIndex].ServerURL)
+	data, err := m.store.ReadAll(storeKey)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return noAuthToken, nil
+			if err != nil {
+				return noAuthToken, nil
+			}
 		}
-		return noAuthToken, errors.Wrapf(err, "failed to read auth token data")
+		return noAuthToken, errors.Wrapf(
+			err, "failed to read auth token data")
 	}
 
 	return client.AuthToken(data), nil
 }
 
-func (m *MenderAuthManager) RemoveAuthToken() error {
+func (m *MenderAuthManager) RemoveAuthToken(serverIndex int) error {
 	// remove token only if we have one
-	if aToken, err := m.AuthToken(); err == nil && aToken != noAuthToken {
+	storeKey := prepareAuthTokenKey(m.servers[serverIndex].ServerURL)
+	if _, err := m.store.ReadAll(storeKey); err != nil {
 		return m.store.Remove(datastore.AuthTokenName)
 	}
 	return nil

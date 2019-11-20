@@ -88,6 +88,10 @@ func (db *DBStore) ReadAll(name string) ([]byte, error) {
 	if db.env == nil {
 		return nil, ErrDBStoreNotInitialized
 	}
+	// Ensure key-length is truncated to a legal legal length.
+	if len(name) > db.env.MaxKeySize() {
+		name = name[:db.env.MaxKeySize()]
+	}
 
 	var buf []byte
 	err := db.ReadTransaction(func(txn Transaction) error {
@@ -185,6 +189,9 @@ func (txn *dbTransaction) WriteAll(name string, data []byte) error {
 }
 
 func (txn *dbTransaction) ReadAll(name string) ([]byte, error) {
+	if len(name) > 512 {
+		name = name[:512]
+	}
 	data, err := txn.txn.Get(txn.dbi, []byte(name))
 
 	// conform to semantics of store read operations and return

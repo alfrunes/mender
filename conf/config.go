@@ -70,11 +70,11 @@ type MenderConfigFromFile struct {
 
 	// Path to server SSL certificate
 	ServerCertificate string
-	// Server URL (For single server conf)
+	// Server URL (Deprecated: use Servers.ServerURL instead)
 	ServerURL string
 	// Path to deployment log file
 	UpdateLogPath string
-	// Server JWT TenantToken
+	// Server JWT TenantToken (Deprecated: use Servers.TenantToken instead)
 	TenantToken string
 	// List of available servers, to which client can fall over
 	Servers []MenderServer
@@ -139,6 +139,7 @@ func LoadConfig(mainConfigFile string, fallbackConfigFile string) (*MenderConfig
 		}
 		config.Servers = make([]MenderServer, 1)
 		config.Servers[0].ServerURL = config.ServerURL
+		config.Servers[0].TenantToken = config.TenantToken
 	} else if config.ServerURL != "" {
 		log.Error("In mender.conf: don't specify both Servers field " +
 			"AND the corresponding fields in base structure (i.e. " +
@@ -247,10 +248,8 @@ func (c *MenderConfig) GetDeploymentLogLocation() string {
 	return c.UpdateLogPath
 }
 
-// GetTenantToken returns a default tenant-token if
-// no custom token is set in local.conf
-func (c *MenderConfig) GetTenantToken() []byte {
-	return []byte(c.TenantToken)
+func (c *MenderConfig) GetServers() []MenderServer {
+	return c.Servers
 }
 
 func (c *MenderConfig) GetVerificationKey() []byte {

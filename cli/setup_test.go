@@ -134,7 +134,7 @@ func TestSetupInteractiveMode(t *testing.T) {
 	dev, err := ioutil.ReadFile(config.DeviceTypeFile)
 	assert.NoError(t, err)
 	assert.Equal(t, string(dev), "device_type=raspberrypi3")
-	assert.Equal(t, "dummy-token", config.TenantToken)
+	assert.Equal(t, "dummy-token", config.Servers[0].TenantToken)
 	assert.Equal(t, "", config.ServerCertificate)
 
 	// No demo nor Mender Professional
@@ -181,7 +181,7 @@ func TestSetupFlags(t *testing.T) {
 	opts.demo = true
 	err := doSetup(ctx, config, opts)
 	assert.NoError(t, err)
-	assert.Equal(t, "dummy-token", config.TenantToken)
+	assert.Equal(t, "dummy-token", config.Servers[0].TenantToken)
 	dev, err := ioutil.ReadFile(config.DeviceTypeFile)
 	assert.NoError(t, err)
 	assert.Equal(t, "device_type=acme-pi", string(dev))

@@ -24,8 +24,14 @@ const (
 	// Name of artifact currently installed. Introduced in Mender 2.0.0.
 	ArtifactNameKey = "artifact-name"
 
-	// Key used to store the auth token.
+	// Key used to store the auth token. (NOTE: this key is now deprecated
+	// and only use for backward compatability - use format variant below)
 	AuthTokenName = "authtoken"
+	// Auth token format key - using server url to prefix the key to allow
+	// multiple servers to be set up simultaneously for migration.
+	// NOTE: Make sure to check that the key is less than 512 characters
+	//       and truncate the key if it should exceed said length.
+	AuthTokenNameF = "%s:authtoken"
 
 	// The key used by the standalone installer to track artifacts that have
 	// been started, but not committed. We don't want to use the

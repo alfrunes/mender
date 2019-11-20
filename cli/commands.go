@@ -60,7 +60,7 @@ const (
 
 func commonInit(config *conf.MenderConfig, opts *runOptionsType) (*app.MenderPieces, error) {
 
-	tentok := config.GetTenantToken()
+	servers := config.GetServers()
 
 	stat, err := os.Stat(opts.dataStore)
 	if os.IsNotExist(err) {
@@ -89,7 +89,7 @@ func commonInit(config *conf.MenderConfig, opts *runOptionsType) (*app.MenderPie
 		AuthDataStore:  dbstore,
 		KeyStore:       ks,
 		IdentitySource: dev.NewIdentityDataGetter(),
-		TenantToken:    tentok,
+		Servers:        servers,
 	})
 	if authmgr == nil {
 		// close DB store explicitly

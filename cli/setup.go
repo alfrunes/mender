@@ -798,7 +798,7 @@ func (opts *setupOptionsType) saveConfigOptions(
 		config.ServerCertificate = opts.serverCert
 	}
 
-	config.TenantToken = opts.tenantToken
+	config.TenantToken = ""
 
 	// Make sure devicetypefile and serverURL is set
 	if config.DeviceTypeFile == "" {
@@ -807,7 +807,9 @@ func (opts *setupOptionsType) saveConfigOptions(
 	}
 	config.Servers = []conf.MenderServer{
 		{
-			ServerURL: opts.serverURL},
+			ServerURL:   opts.serverURL,
+			TenantToken: opts.tenantToken,
+		},
 	}
 	// Extract schema to set ClientProtocol
 	re, err := regexp.Compile(validURLRegularExpression)
