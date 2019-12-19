@@ -94,7 +94,7 @@ func stopHandler(sigChan chan os.Signal, thawChan chan int) {
 	select {
 	case sig = <-sigChan:
 		log.Infof("Received signal: %s",
-			unix.SignalName(sig.(unix.Signal)))
+			sig.String())
 	case <-thawChan:
 	}
 	if err := system.ThawFS("/"); err != nil {
