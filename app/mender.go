@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/mendersoftware/log"
@@ -47,7 +48,7 @@ type Controller interface {
 
 	NewStatusReportWrapper(updateId string,
 		stateId datastore.MenderState) *client.StatusReportWrapper
-	ReportUpdateStatus(update *datastore.UpdateInfo, status string) menderError
+	ReportUpdateStatus(update *datastore.UpdateInfo, status ...string) menderError
 	UploadLog(update *datastore.UpdateInfo, logs []byte) menderError
 	InventoryRefresh() error
 
@@ -390,12 +391,17 @@ func (m *Mender) NewStatusReportWrapper(updateId string,
 	}
 }
 
-func (m *Mender) ReportUpdateStatus(update *datastore.UpdateInfo, status string) menderError {
+func (m *Mender) ReportUpdateStatus(update *datastore.UpdateInfo, status ...string) menderError {
+	var subState string
+	if len(status) > 1 {
+		subState = strings.Join(status[1:len(status)-1], ",")
+	}
 	s := client.NewStatus()
 	err := s.Report(m.api.Request(m.authToken, nextServerIterator(m), reauthorize(m)), m.Config.Servers[0].ServerURL,
 		client.StatusReport{
 			DeploymentID: update.ID,
-			Status:       status,
+			Status:       status[0],
+			SubState:     subState,
 		})
 	if err != nil {
 		log.Error("error reporting update status: ", err)

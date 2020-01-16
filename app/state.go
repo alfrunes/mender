@@ -703,7 +703,7 @@ func (u *updateFetchState) Handle(ctx *StateContext, c Controller) (State, bool)
 
 	log.Debugf("handle update fetch state")
 
-	merr := c.ReportUpdateStatus(&u.update, client.StatusDownloading)
+	merr := c.ReportUpdateStatus(&u.update, client.StatusDownloading, "$progress=0")
 	if merr != nil && merr.IsFatal() {
 		return NewUpdateStatusReportState(&u.update, client.StatusFailure), false
 	}
@@ -776,7 +776,7 @@ func (u *updateStoreState) Handle(ctx *StateContext, c Controller) (State, bool)
 
 	log.Debugf("handle update install state")
 
-	merr := c.ReportUpdateStatus(&u.update, client.StatusDownloading)
+	merr := c.ReportUpdateStatus(&u.update, client.StatusDownloading, "$progress=0")
 	if merr != nil && merr.IsFatal() {
 		return NewUpdateStatusReportState(&u.update, client.StatusFailure), false
 	}
@@ -836,7 +836,7 @@ func (u *updateStoreState) Handle(ctx *StateContext, c Controller) (State, bool)
 	// check if update is not aborted
 	// this step is needed as installing might take a while and we might end up with
 	// proceeding with already cancelled update
-	merr = c.ReportUpdateStatus(&u.update, client.StatusDownloading)
+	merr = c.ReportUpdateStatus(&u.update, client.StatusDownloading, "$progress=0")
 	if merr != nil && merr.IsFatal() {
 		return NewUpdateErrorState(merr, &u.update), false
 	}
@@ -967,7 +967,7 @@ func (is *updateInstallState) Handle(ctx *StateContext, c Controller) (State, bo
 		return NewUpdateErrorState(NewTransientError(err), is.Update()), false
 	}
 
-	merr := c.ReportUpdateStatus(is.Update(), client.StatusInstalling)
+	merr := c.ReportUpdateStatus(is.Update(), client.StatusInstalling, "$progress=0")
 	if merr != nil && merr.IsFatal() {
 		return is.HandleError(ctx, c, merr)
 	}

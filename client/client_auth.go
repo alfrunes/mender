@@ -97,13 +97,12 @@ func (u *AuthClient) Request(api ApiRequester, server string, dataSrc AuthDataMe
 	case http.StatusUnauthorized:
 		return nil, NewAPIError(AuthErrorUnauthorized, rsp)
 	case http.StatusOK:
-		log.Debugf("receive response data")
 		data, err := ioutil.ReadAll(rsp.Body)
 		if err != nil {
 			return nil, NewAPIError(errors.Wrapf(err, "failed to receive authorization response data"), rsp)
 		}
 
-		log.Debugf("received response data:  %v", data)
+		log.Debugf("received response data: %s", string(data))
 		return data, nil
 	default:
 		return nil, NewAPIError(errors.Errorf("unexpected authorization status %v", rsp.StatusCode), rsp)

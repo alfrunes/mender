@@ -171,7 +171,13 @@ func (ar *ApiRequest) tryDo(req *http.Request, serverURL string) (*http.Response
 			if req.GetBody != nil {
 				if body, e := req.GetBody(); e == nil {
 					req.Body = body
+				} else {
+					return nil, errors.Wrap(err, e.Error())
 				}
+				body, _ := req.GetBody()
+				b := make([]byte, 1024)
+				body.Read(b)
+				log.Warnf("!!!!!!!!!!!!!!!!!!!!Actual body length = %d", len(b))
 			}
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ar.auth))
 			r, err = ar.api.Do(req)

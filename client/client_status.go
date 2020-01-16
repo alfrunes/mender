@@ -15,9 +15,12 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"time"
 
 	"github.com/mendersoftware/log"
 	"github.com/pkg/errors"
@@ -111,4 +114,85 @@ func makeStatusReportRequest(server string, report StatusReport) (*http.Request,
 
 	hreq.Header.Add("Content-Type", "application/json")
 	return hreq, nil
+}
+
+// progressReporter contains a sub-routine that reports the progress of the
+// state (be it Downloading or Installing).
+func (u *StatusClient) progressReporter(ctx context.Context, pollInterval time.Duration,
+	url string, status StatusReport, progressPtr interface{}, limit int64) {
+	var lastProgress int64
+	var progress int64
+	// FIXME
+	_, err := makeStatusReportRequest(url, status)
+	if err != nil {
+		return
+	}
+	// ${1} - preamble
+	// ${2} - "$progress="
+	// ${3} = {progress}(%)
+	// ${4} - decimal
+	// ${5} - epilogue
+	progressRe, err := regexp.Compile(`(.*?)($progress=)([0-9]+(.[0-9]+)?)?(.*)`)
+	if err != nil {
+		return
+	}
+
+	dereferenceInt64 := func(i interface{}) int64 {
+		// Returns non-negative integer value or negative value
+		// if type is incompatible.
+		var ret int64
+		switch i.(type) {
+		case *int64:
+			ret = *i.(*int64)
+		case *uint64:
+			ret = int64(*i.(*uint64))
+		case *int32:
+			ret = int64(*i.(*int32))
+		case *uint32:
+			ret = int64(*i.(*uint32))
+		case *int:
+			ret = int64(*i.(*int))
+		case *uint:
+			ret = int64(*i.(*uint))
+
+		default:
+			return -1
+		}
+		return ret
+	}
+
+	// Check if pointers has an integer type of significant width
+	if dereferenceInt64(limit) < 0 {
+		return
+	}
+	if progress = dereferenceInt64(progressPtr); lastProgress < 0 {
+		return
+	}
+
+	if !progressRe.MatchString(status.SubState) {
+		status.SubState = "$progress=0," + status.SubState
+	}
+
+	for {
+		if lastProgress != progress {
+			lastProgress = progress
+			pf := (float64(progress) / float64(limit)) * 100.0
+			status.SubState = progressRe.ReplaceAllString(
+				status.SubState,
+				fmt.Sprintf(`${1}${2}%.2f${5}`, pf),
+			)
+		}
+		lastProgress = progress
+		if progress >= limit {
+			break
+		}
+		select {
+		case <-time.After(pollInterval):
+
+		case <-ctx.Done():
+			return
+		}
+
+		progress = dereferenceInt64(progressPtr)
+	}
 }
