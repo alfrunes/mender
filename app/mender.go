@@ -99,14 +99,10 @@ type Mender struct {
 	*dev.DeviceManager
 
 	// This state should be maintained private to the app package.
-	updater             client.Updater
 	state               State
 	stateScriptExecutor statescript.Executor
 	forceBootstrap      bool
-	authReq             client.AuthRequester
-	authMgr             AuthManager
-	api                 *client.ApiClient
-	authToken           client.AuthToken
+	api                 client.MenderClient
 }
 
 type MenderPieces struct {

@@ -1,131 +1,142 @@
-// Copyright 2019 Northern.tech AS
-//
-//    Licensed under the Apache License, Version 2.0 (the "License");
-//    you may not use this file except in compliance with the License.
-//    You may obtain a copy of the License at
-//
-//        http://www.apache.org/licenses/LICENSE-2.0
-//
-//    Unless required by applicable law or agreed to in writing, software
-//    distributed under the License is distributed on an "AS IS" BASIS,
-//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//    See the License for the specific language governing permissions and
-//    limitations under the License.
 package client
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
-	"fmt"
+	"encoding/json"
+	"encoding/pem"
 	"io/ioutil"
 	"net/http"
-	"net/url"
-	"time"
 
-	"github.com/mendersoftware/log"
 	"github.com/pkg/errors"
 )
 
-var AuthErrorUnauthorized = errors.New("authentication request rejected")
-
-type AuthRequester interface {
-	Request(api ApiRequester, server string, dataSrc AuthDataMessenger) ([]byte, error)
+type AuthRequest struct {
+	Identity    []byte `json:"id_data"`
+	PublicKey   []byte `json:"pubkey"`
+	TenantToken []byte `json:"tenant_token,omitempty"`
 }
 
-// Auth client wrapper. Instantiate by yourself or use `NewAuthClient()` helper
-type AuthClient struct {
-}
-
-func NewAuth() *AuthClient {
-	ac := AuthClient{}
-	return &ac
-}
-
-func (u *AuthClient) Request(api ApiRequester, server string, dataSrc AuthDataMessenger) ([]byte, error) {
-
-	req, err := makeAuthRequest(server, dataSrc)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to build authorization request")
+func (client *MenderClient) buildAuthRequest(server MenderServer) (*http.Request, error) {
+	var err error
+	var reqBody AuthRequest
+	var privateDer []byte
+	var publicDer []byte
+	var signature []byte
+	var privateKey interface{}
+	privatePem, _ := pem.Decode(client.privateKey)
+	if privatePem == nil {
+		// Is key in DER form?
+		privateDer = client.privateKey
+	} else {
+		privateDer, err = x509.DecryptPEMBlock(privatePem, nil)
+		return nil, errors.Wrap(err, "error loading private key")
 	}
-
-	log.Debugf("making an authorization request (%s) to server %s", req.RequestURI, server)
-	rsp, err := api.Do(req)
+	privateKey, err = x509.ParsePKCS8PrivateKey(privateDer)
 	if err != nil {
-		log.Errorf("Failure occurred while executing authorization request: %#v", err)
-
-		// checking the detailed reason of the failure
-		if urlErr, ok := err.(*url.Error); ok {
-			switch certErr := urlErr.Err.(type) {
-			case x509.UnknownAuthorityError:
-				log.Error("Certificate is signed by unknown authority.")
-				log.Error("If you are using a self-signed certificate, make sure it is " +
-					"available locally to the Mender client in /etc/mender/server.crt and " +
-					"is configured properly in /etc/mender/mender.conf.")
-				log.Error("See https://docs.mender.io/troubleshooting/mender-client#" +
-					"certificate-signed-by-unknown-authority for more information.")
-
-				return nil, errors.Wrapf(err, "certificate signed by unknown authority")
-
-			case x509.CertificateInvalidError:
-				switch certErr.Reason {
-				case x509.Expired:
-					log.Error("Certificate has expired or is not yet valid.")
-					log.Errorf("Current clock is %s", time.Now())
-					log.Error("Verify that the clock on the device is correct " +
-						"and/or certificate expiration date is valid.")
-					log.Error("See https://docs.mender.io/troubleshooting/mender-client#" +
-						"certificate-expired-or-not-yet-valid for more information.")
-
-					return nil, errors.Wrapf(err, "certificate has expired")
-				default:
-					log.Errorf("Server certificate is invalid, reason: %#v", certErr.Reason)
-				}
-				return nil, errors.Wrapf(err, "certificate exists, but is invalid")
-			default:
-				log.Errorf("authorization request error: %v", certErr)
+		// Is key in PKCS1 format?
+		privateKey, err = x509.ParsePKCS1PrivateKey(privateDer)
+		if err != nil {
+			// Is key elliptic?
+			privateKey, err = x509.ParseECPrivateKey(privateDer)
+			if err != nil {
+				return nil, errors.Wrap(err,
+					"malformed private key")
 			}
 		}
-		return nil, errors.Wrapf(err,
-			"generic error occurred while executing authorization request")
 	}
-	defer rsp.Body.Close()
 
-	log.Debugf("got response: %v", rsp)
+	var privateSigner crypto.Signer
+	switch privateKey.(type) {
+	case rsa.PrivateKey,
+		ecdsa.PrivateKey,
+		ed25519.PrivateKey:
 
-	switch rsp.StatusCode {
-	case http.StatusUnauthorized:
-		return nil, NewAPIError(AuthErrorUnauthorized, rsp)
-	case http.StatusOK:
-		log.Debugf("receive response data")
-		data, err := ioutil.ReadAll(rsp.Body)
+		// All the keys satisfy the crypto.Signer interface
+		privateSigner := privateKey.(crypto.Signer)
+		publicDer, err = x509.MarshalPKIXPublicKey(privateSigner.Public())
 		if err != nil {
-			return nil, NewAPIError(errors.Wrapf(err, "failed to receive authorization response data"), rsp)
+			return nil, errors.Wrap(err,
+				"error serializing public privateSigner")
 		}
-
-		log.Debugf("received response data:  %v", data)
-		return data, nil
 	default:
-		return nil, NewAPIError(errors.Errorf("unexpected authorization status %v", rsp.StatusCode), rsp)
+		return nil, errors.New("private key not supported")
 	}
+
+	buf := &bytes.Buffer{}
+	err = pem.Encode(buf, &pem.Block{
+		Type:  "PUBLIC KEY", //PKIX
+		Bytes: publicDer,
+	})
+	reqBody.PublicKey = buf.Bytes()
+	reqBody.Identity = client.identity
+	reqBody.TenantToken = server.TenantToken
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, errors.Wrap(err,
+			"error serializing authorization request body")
+	}
+
+	// NOTE: ed25519 doesn't not support non-zero Hash argument, so we
+	//       need to do this manually.
+	hash := sha256.Sum256(body)
+	// For RSA this will default to PKCS1 v1.5.
+	signature, err = privateSigner.Sign(
+		rand.Reader, hash[:], crypto.Hash(0))
+
+	buf.Reset()
+	_, err = buf.Write(body)
+	if err != nil {
+		return nil, errors.Wrap(err, "error preparing request body")
+	}
+
+	req, err := http.NewRequest(
+		"GET",
+		server.ServerURL+ApiAuthPath,
+		buf,
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-MEN-Signature", string(signature))
+	return req, nil
 }
 
-func makeAuthRequest(server string, dataSrc AuthDataMessenger) (*http.Request, error) {
-	url := buildApiURL(server, "/authentication/auth_requests")
-
-	req, err := dataSrc.MakeAuthRequest()
+// Private function only makes a single attempt to authorize.
+func (client *MenderClient) authorize(server *MenderServer) (*http.Response, error) {
+	req, err := client.buildAuthRequest(*server)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to obtain authorization message data")
+		return nil, errors.Wrap(err, "error building request")
 	}
 
-	dataio := bytes.NewBuffer(req.Data)
-	hreq, err := http.NewRequest(http.MethodPost, url, dataio)
+	rsp, err := client.httpClient.Do(req)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create authorization HTTP request")
+		return nil, err
+	}
+	if rsp.StatusCode == 200 {
+		server.APIToken, err = ioutil.ReadAll(rsp.Body)
+		err = errors.Wrap(err,
+			"error extracting APIToken from HTTP-response")
+	}
+	return rsp, err
+
+}
+
+// Authorize issues an authentication request based on the data the client was
+// initialized with.
+func (client *MenderClient) Authorize() (*http.Response, error) {
+	req, err := client.buildAuthRequest(client.servers[client.activeServer])
+	if err != nil {
+		return nil, errors.Wrap(err, "error building request")
 	}
 
-	hreq.Header.Add("Content-Type", "application/json")
-	hreq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", req.Token))
-	hreq.Header.Add("X-MEN-Signature", base64.StdEncoding.EncodeToString(req.Signature))
-	return hreq, nil
+	return client.Do(req)
 }

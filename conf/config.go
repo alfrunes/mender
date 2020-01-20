@@ -25,17 +25,19 @@ import (
 	"github.com/pkg/errors"
 )
 
+type HttpsConfig struct {
+	Certificate string
+	Key         string
+	SkipVerify  bool
+}
+
 type MenderConfigFromFile struct {
 	// ClientProtocol "https"
 	ClientProtocol string
 	// Path to the public key used to verify signed updates
 	ArtifactVerifyKey string
-	// HTTPS client parameters
-	HttpsClient struct {
-		Certificate string
-		Key         string
-		SkipVerify  bool
-	}
+	// HTTPS client configuration parameters
+	HttpsClient HttpsConfig
 	// Rootfs device path
 	RootfsPartA string
 	RootfsPartB string
@@ -56,12 +58,6 @@ type MenderConfigFromFile struct {
 	// Poll interval for checking for update (check-update)
 	StateScriptRetryIntervalSeconds int
 
-	// Update module parameters:
-
-	// The timeout for the execution of the update module, after which it
-	// will be killed.
-	ModuleTimeoutSeconds int
-
 	// Path to server SSL certificate
 	ServerCertificate string
 	// Server URL (For single server conf)
@@ -70,8 +66,19 @@ type MenderConfigFromFile struct {
 	UpdateLogPath string
 	// Server JWT TenantToken
 	TenantToken string
-	// List of available servers, to which client can fall over
-	Servers []client.MenderServer
+	// List of available servers, multiple server entities may be used
+	// for redundancy or migration purposes.
+	Servers struct {
+		// Mender gateway URL e.g. https://docker.mender.io
+		ServerURL string
+		// Tenant token for hosted / enterprise services
+		TenantToken string
+	}
+	// Update module parameters:
+
+	// The timeout for the execution of the update module, after which it
+	// will be killed.
+	ModuleTimeoutSeconds int
 }
 
 type MenderConfig struct {

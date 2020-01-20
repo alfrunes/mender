@@ -255,7 +255,7 @@ func SetupCLI(args []string) error {
 					Destination: &runOptions.setupOptions.serverIP,
 					Usage:       "Server ip address."},
 				cli.StringFlag{
-					Name:        "server-cert, E",
+					Name:        "trusted-certs, E",
 					Destination: &runOptions.setupOptions.serverCert,
 					Usage:       "`PATH` to trusted server certificates"},
 				cli.StringFlag{
@@ -351,9 +351,8 @@ func SetupCLI(args []string) error {
 				"include in the output.",
 			Destination: &runOptions.logOptions.logModules},
 		cli.StringFlag{
-			Name:        "trusted-certs, E",
-			Usage:       "Trusted server certificates `FILE` path.",
-			Destination: &runOptions.Config.ServerCert},
+			Name:  "trusted-certs, E",
+			Usage: "Trusted server certificates `FILE` path."},
 		cli.BoolFlag{
 			Name:        "forcebootstrap, F",
 			Usage:       "Force bootstrap.",
@@ -363,9 +362,8 @@ func SetupCLI(args []string) error {
 			Usage:       "Disable logging to syslog.",
 			Destination: &runOptions.logOptions.noSyslog},
 		cli.BoolFlag{
-			Name:        "skipverify",
-			Usage:       "Skip certificate verification.",
-			Destination: &runOptions.Config.NoVerify},
+			Name:  "skipverify",
+			Usage: "Skip certificate verification."},
 	}
 	cli.HelpPrinter = upgradeHelpPrinter(cli.HelpPrinter)
 	cli.VersionPrinter = func(c *cli.Context) {
@@ -375,7 +373,7 @@ func SetupCLI(args []string) error {
 }
 
 func (runOptions *runOptionsType) commonCLIHandler(
-	_ *cli.Context) (*conf.MenderConfig,
+	ctx *cli.Context) (*conf.MenderConfig,
 	installer.DualRootfsDevice, error) {
 	// Handle config flags
 	config, err := conf.LoadConfig(
@@ -383,8 +381,8 @@ func (runOptions *runOptionsType) commonCLIHandler(
 	if err != nil {
 		return nil, nil, err
 	}
-	if runOptions.Config.NoVerify {
-		config.HttpsClient.SkipVerify = true
+	if ctx.GlobalIsSet("skipverify") {
+		config.HttpsClient.SkipVerify = ctx.Bool("skipverify")
 	}
 
 	env := installer.NewEnvironment(new(system.OsCalls))
@@ -483,11 +481,10 @@ func (runOptions *runOptionsType) setupCLIHandler(ctx *cli.Context) error {
 	if ctx.IsSet("data") {
 		runOptions.dataStore = ctx.String("data")
 	}
-	if runOptions.Config.ServerCert != "" &&
-		runOptions.setupOptions.serverCert == "" {
-		runOptions.setupOptions.serverCert = runOptions.Config.ServerCert
+	if ctx.GlobalIsSet("trusted-certs") && !ctx.IsSet("trusted-certs") {
+		runOptions.setupOptions.serverCert = ctx.GlobalString("trusted-certs")
 	} else {
-		runOptions.Config.ServerCert = runOptions.setupOptions.serverCert
+		ctx.GlobalSet("trusted-certs", ctx.String("trusted-certs"))
 	}
 	return runOptions.handleCLIOptions(ctx)
 }

@@ -1,77 +1,62 @@
-// Copyright 2019 Northern.tech AS
-//
-//    Licensed under the Apache License, Version 2.0 (the "License");
-//    you may not use this file except in compliance with the License.
-//    You may obtain a copy of the License at
-//
-//        http://www.apache.org/licenses/LICENSE-2.0
-//
-//    Unless required by applicable law or agreed to in writing, software
-//    distributed under the License is distributed on an "AS IS" BASIS,
-//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//    See the License for the specific language governing permissions and
-//    limitations under the License.
 package client
 
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
-	"github.com/mendersoftware/log"
 	"github.com/pkg/errors"
 )
 
-type InventorySubmitter interface {
-	Submit(api ApiRequester, server string, data interface{}) error
+type InventoryItem struct {
+	Name        string `json:"name"`
+	Value       string `json:"value"`
+	Description string `json:"description,omitempty"`
 }
 
-type InventoryClient struct {
+func (client *MenderClient) buildInventoryRequest(
+	items []InventoryItem) (*http.Request, error) {
+	var req *http.Request
+	apiToken := client.servers[client.activeServer].APIToken
+	if apiToken == nil {
+		return nil, ErrDeviceNotAuthorized
+	}
+
+	body, err := json.Marshal(items)
+	if err != nil {
+		return nil, errors.Wrap(err,
+			"error serializing inventory request body")
+	}
+	url := client.servers[client.activeServer].ServerURL
+	req, err = http.NewRequest("PATCH", url+ApiInventory, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization",
+		"Bearer "+string(apiToken))
+
+	return req, nil
 }
 
-func NewInventory() InventorySubmitter {
-	return &InventoryClient{}
-}
-
-// Submit reports status information to the backend
-func (i *InventoryClient) Submit(api ApiRequester, url string, data interface{}) error {
-	req, err := makeInventorySubmitRequest(url, data)
+func (client *MenderClient) UpdateInventory(items []InventoryItem) error {
+	req, err := client.buildInventoryRequest(items)
 	if err != nil {
-		return errors.Wrapf(err, "failed to prepare inventory submit request")
+		return err
 	}
-
-	r, err := api.Do(req)
+	rsp, err := client.httpClient.Do(req)
 	if err != nil {
-		log.Error("failed to submit inventory data: ", err)
-		return errors.Wrapf(err, "inventory submit failed")
+		return err
 	}
-
-	defer r.Body.Close()
-
-	if r.StatusCode != http.StatusOK {
-		log.Errorf("got unexpected HTTP status when submitting to inventory: %v", r.StatusCode)
-		return NewAPIError(errors.Errorf("inventory submit failed, bad status %v", r.StatusCode), r)
+	switch rsp.StatusCode {
+	case http.StatusBadRequest:
+		return NewAPIError(fmt.Errorf("400 Bad request"), rsp)
+	case http.StatusInternalServerError:
+		return NewAPIError(fmt.Errorf("500 Internal server error"), rsp)
+	case http.StatusOK:
+		return nil
 	}
-	log.Debugf("inventory update sent, response %v", r)
-
-	return nil
-}
-
-func makeInventorySubmitRequest(server string, data interface{}) (*http.Request, error) {
-	url := buildApiURL(server, "/inventory/device/attributes")
-
-	out := &bytes.Buffer{}
-	enc := json.NewEncoder(out)
-	err := enc.Encode(&data)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to encode inventory request data")
-	}
-
-	hreq, err := http.NewRequest(http.MethodPatch, url, out)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create inventory HTTP request")
-	}
-
-	hreq.Header.Add("Content-Type", "application/json")
-	return hreq, nil
+	return NewAPIError(fmt.Errorf("Bad status: %v", rsp.Status), rsp)
 }

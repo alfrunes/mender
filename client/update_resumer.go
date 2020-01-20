@@ -20,35 +20,38 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
-	"net/http"
-	"strconv"
-	"strings"
 	"time"
 )
 
+// Normally one minute, but used in tests to lower the interval to avoid
+// waiting.
+var ExponentialBackoffSmallestUnit time.Duration = time.Minute
+
+// ResumeFunc contains a function that will resume the update and returns
+// a new ReadCloser as well as the new offset and content length on success,
+// otherwise an appropriate error will be returned.
+type ResumeFunc func(offset int64) (io.ReadCloser, int64, int64, error)
+
 type UpdateResumer struct {
 	stream        io.ReadCloser
-	apiReq        ApiRequester
-	req           *http.Request
 	offset        int64
 	contentLength int64
 	retryAttempts int
 	maxWait       time.Duration
+	resumeFunc    ResumeFunc
 }
 
 // Note: It is important that nothing has been read from the stream yet.
 func NewUpdateResumer(stream io.ReadCloser,
 	contentLength int64,
 	maxWait time.Duration,
-	apiReq ApiRequester,
-	req *http.Request) *UpdateResumer {
+	resumeFunc ResumeFunc) *UpdateResumer {
 
 	return &UpdateResumer{
 		stream:        stream,
-		apiReq:        apiReq,
-		req:           req,
 		contentLength: contentLength,
 		maxWait:       maxWait,
+		resumeFunc:    resumeFunc,
 	}
 }
 
@@ -69,13 +72,8 @@ func (h *UpdateResumer) Read(buf []byte) (int, error) {
 		// If we get here we have unexpected EOF, either an actual unexpected
 		// EOF, or a normal EOF, but with an unexpected number of bytes. This is
 		// a sign that we should try to resume from the same position.
-
-		h.req.Header.Set("Range", fmt.Sprintf("bytes=%d-", h.offset))
-
-		var res *http.Response
 		for {
 			log.Errorf("Download connection broken: %s", err.Error())
-
 			waitTime, err := GetExponentialBackoffTime(h.retryAttempts, h.maxWait)
 			if err != nil {
 				return int(h.offset - origOffset),
@@ -87,89 +85,83 @@ func (h *UpdateResumer) Read(buf []byte) (int, error) {
 
 			time.Sleep(waitTime)
 
-			log.Infof("Attempting to resume artifact download from offset %d", h.offset)
+			log.Infof("Attempting to resume artifact download "+
+				"from offset %d", h.offset)
 
-			res, err = h.apiReq.Do(h.req)
+			body, offset, length, err := h.resumeFunc(h.offset)
 			if err != nil {
 				log.Infof("Download resume request failed: %s", err.Error())
 				continue
 			}
 
-			stream, err := h.getStreamFromPartialContent(res)
-			if err != nil {
-				continue
+			if offset > h.offset {
+				return -1, fmt.Errorf(
+					"HTTP server did not return expected "+
+						"range. Expected %d, got %d",
+					h.offset, offset)
+			} else if offset < h.offset {
+				bytesRead, err := io.CopyN(
+					ioutil.Discard, body, h.offset-offset)
+				if err == io.ErrUnexpectedEOF {
+					// Treat this specifically to force a
+					// retry in the outer function.
+					return -1, err
+				} else if err != nil ||
+					bytesRead != h.offset-offset {
+					return -1, errors.Wrapf(err,
+						"Could not resume download, "+
+							"unable to catch up to "+
+							"offset %d from offset %d",
+						h.offset, offset)
+				}
+			}
+			if length != h.contentLength {
+				return -1, fmt.Errorf(
+					"HTTP server returned inconsistent "+
+						"range header; expected: "+
+						"%d != received: %d",
+					h.contentLength, length)
 			}
 
-			h.stream = stream
+			h.stream.Close()
+			h.stream = body
 			break
 		}
-
 		// Repeat from the top.
 	}
 }
 
-func (h *UpdateResumer) getStreamFromPartialContent(res *http.Response) (io.ReadCloser, error) {
-	var err error
-
-	if h.offset > 0 && res.StatusCode != http.StatusPartialContent {
-		return nil, fmt.Errorf("Could not resume download from offset %d. HTTP status code: %s",
-			h.offset, res.Status)
-	}
-
-	hRangeStr := res.Header.Get("Content-Range")
-	log.Debugf("Content-Range received from server: '%s'", hRangeStr)
-	if !strings.HasPrefix(hRangeStr, "bytes ") {
-		return nil, fmt.Errorf("HTTP server returned garbled or missing range: '%s'", hRangeStr)
-	}
-	hRangeStr = strings.TrimSpace(hRangeStr[len("bytes "):])
-
-	hRangePosAndSize := strings.Split(hRangeStr, "/")
-	if len(hRangePosAndSize) > 2 {
-		return nil, fmt.Errorf("Unexpected Content-Range received from server: %s", hRangeStr)
-	} else if len(hRangePosAndSize) == 2 {
-		var sizeFromServer int64
-		sizeFromServer, err = strconv.ParseInt(hRangePosAndSize[1], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("HTTP server returned garbled or missing range: '%s'", hRangeStr)
-		} else if sizeFromServer != h.contentLength {
-			return nil, fmt.Errorf("Size of artifact changed after download was resumed "+
-				"(expected %d, got %d)", h.contentLength, sizeFromServer)
-		}
-		// Intentional fallthrough. Response does not have to contain
-		// the total size after '/'.
-	}
-	hRangeStartAndEnd := strings.Split(hRangePosAndSize[0], "-")
-	if len(hRangeStartAndEnd) != 2 {
-		return nil, fmt.Errorf("Invalid Content-Range returned by server: '%s'", hRangeStr)
-	}
-
-	var newOffset int64
-	newOffset, err = strconv.ParseInt(hRangeStartAndEnd[0], 10, 64)
-	if err != nil {
-		return nil, errors.Wrapf(err, "HTTP server returned garbled range: %s", hRangeStr)
-	}
-
-	if newOffset > h.offset {
-		return nil, fmt.Errorf("HTTP server did not return expected range. Expected %d, got %d",
-			h.offset, newOffset)
-	} else if newOffset < h.offset {
-		// Server gave us an offset which is earlier than we asked.
-		// Consume input to get back where we were.
-		bytesRead, err := io.CopyN(ioutil.Discard, res.Body, h.offset-newOffset)
-		if err == io.ErrUnexpectedEOF {
-			// Treat this specifically to force a retry in the outer function.
-			return nil, err
-		} else if err != nil || bytesRead != h.offset-newOffset {
-			return nil, errors.Wrapf(err,
-				"Could not resume download, unable to catch up to offset %d from offset %d",
-				h.offset, newOffset)
-		}
-		// Intentional fallthrough to end.
-	}
-
-	return res.Body, nil
-}
-
 func (h *UpdateResumer) Close() error {
 	return h.stream.Close()
+}
+
+// Simple algorithm: Start with one minute, and try three times, then double
+// interval (maxInterval is maximum) and try again. Repeat until we tried
+// three times with maxInterval.
+func GetExponentialBackoffTime(tried int, maxInterval time.Duration) (time.Duration, error) {
+	const perIntervalAttempts = 3
+
+	interval := 1 * ExponentialBackoffSmallestUnit
+	nextInterval := interval
+
+	for c := 0; c <= tried; c += perIntervalAttempts {
+		interval = nextInterval
+		nextInterval *= 2
+		if interval >= maxInterval {
+			if tried-c >= perIntervalAttempts {
+				// At max interval and already tried three
+				// times. Give up.
+				return 0, errors.New("Tried maximum amount of times")
+			}
+
+			// Don't use less than the smallest unit, usually one
+			// minute.
+			if maxInterval < ExponentialBackoffSmallestUnit {
+				return ExponentialBackoffSmallestUnit, nil
+			}
+			return maxInterval, nil
+		}
+	}
+
+	return interval, nil
 }
