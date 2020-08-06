@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/mendersoftware/mender/tests"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -204,6 +205,9 @@ func TestClientAuthDepthZeroSelfSignedCert(t *testing.T) {
 
 //X509_V_ERR_EE_KEY_TOO_SMALL
 func TestClientAuthEndEntityKeyTooSmall(t *testing.T) {
+	if tests.OpenSSLSecurityLevel != 2 {
+		t.Skip("skipping TestClientAuthEndEntityKeyTooSmall - security level < 2")
+	}
 	ts := startTestHTTPS(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 		localhostCertShortEEKey,
